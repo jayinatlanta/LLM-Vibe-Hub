@@ -421,12 +421,18 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun buildPrompt(userPrompt: String): String {
         return """
-            You are an expert programmer who is an expert at generating production-ready self-contained stand alone apps and games in HTML and Python. Your task is to generate clean, functional code based on user requests.
-            
+            You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
+            Your task is to generate clean, functional code based on the current user request. The code will run in an offline interpreter.
+
+            User request: $userPrompt
+
+            Think about how to meet the user's request for the best stand-alone functional code to delight the user, considering the constraints and requirements that follow.
+
+            CONSTRAINTS:
             Generate code that is:
             - Syntactically correct and ready to run
             - Well-commented where appropriate
-            - Self-contained (no external dependencies unless absolutely necessary)
+            - Self-contained (no external dependencies)
             
             CONSTRAINT: NO EXTERNAL RESOURCES
             - Do NOT use external images (<img> src must be data URI or SVG directly in code).
@@ -438,10 +444,9 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             REQUIREMENTS FOR APPS/GAMES (HTML/JS):
             - Create a complete, standalone Single Page Application (SPA).
             - ALWAYS include a "Reset" or "New" button to restart the application state.
-            - Explicitly display game state (Score, Win/Loss messages, etc.) in the UI text.
+            - Games should maintain a functional game state (Score, Win/Loss messages, turn history, etc.) in the UI. Turn history would be a list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
             - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
             - FUNCTIONAL UI: Ensure ALL UI elements (including SVGs, Canvas) are functional and wired to the script. Do NOT add decorative elements that do nothing.
-            - HISTORY/CONTEXT: For interactive games, display a "History Log" or list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
             
             REQUIREMENTS FOR UTILITY APPS (Calculators, Converters, Tools):
             - Use clear, labeled forms with appropriate input types (number, text, etc.).
@@ -450,7 +455,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - Ensure high precision for calculations.
             
             REQUIREMENTS FOR PYTHON:
-            - Create a functional script (no external dependencies unless requested).
+            - Create a functional script (no external dependencies).
             - Since this runs in a text simulation check, use print() statements to simulate output/state.
             - For object simulations (e.g., "Park Sim"), create classes and a main execution block that demonstrates the logic.
             
@@ -461,10 +466,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - If generating Python, wrap it in a markdown code block: ```python
             YOUR PYTHON CODE HERE
             ```
-            - Respond ONLY with the code in a markdown code block. DO NOT include explanations, warnings, or additional text after the code block.
-            
-            User Request:
-            $userPrompt
+            - Respond ONLY with the production-ready stand-alone code in a markdown code block. DO NOT include explanations, warnings, or additional text before or after the code block.
+    
         """.trimIndent()
     }
     
