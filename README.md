@@ -92,6 +92,18 @@ HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 Save and sync Gradle in Android Studio; the app will read `BuildConfig.HF_TOKEN` at build time.
 
+### Model License Acceptance
+Some models on HuggingFace (especially from Google and Meta) require explicit license acceptance before downloading. When building the app locally:
+
+1. Ensure you have a valid HuggingFace read token in `local.properties` (see above)
+2. **For each model you want to download:**
+   - Visit the model's HuggingFace page (e.g., https://huggingface.co/google/gemma-3n-E2B-it-litert-lm)
+   - Click the "Access repository" or license acceptance button
+   - Grant consent to the model's license terms
+   - Try downloading the model in the app again
+
+**Note:** This is only required for local development builds. The Play Store version uses different authentication and does not require manual license acceptance for each model.
+
 Contributing
 - Fork → branch → PR. See CONTRIBUTING.md (or open an issue/discussion if unsure).
 

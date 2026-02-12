@@ -32,6 +32,10 @@ sealed class Screen(val route: String) {
     object ScamDetector : Screen("scam_detector")
     object ImageGenerator : Screen("image_generator")
     object VibeCoder : Screen("vibe_coder")
+    object CodeCanvas : Screen("code_canvas") {
+        fun createRoute(codeContent: String, codeType: String = "html") =
+            "code_canvas?code=${android.net.Uri.encode(codeContent)}&type=$codeType"
+    }
     object Settings : Screen("settings")
     object Models : Screen("models")
     object About : Screen("about")
@@ -173,7 +177,27 @@ fun LlmHubNavigation(
         composable(Screen.VibeCoder.route) {
             VibeCoderScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToModels = { navController.navigate(Screen.Models.route) }
+                onNavigateToModels = { navController.navigate(Screen.Models.route) },
+                onNavigateToCanvas = { code, type ->
+                    navController.navigate(Screen.CodeCanvas.createRoute(code, type))
+                }
+            )
+        }
+        
+        composable(
+            route = "code_canvas?code={code}&type={type}",
+            arguments = listOf(
+                androidx.navigation.navArgument("code") { type = androidx.navigation.NavType.StringType },
+                androidx.navigation.navArgument("type") { type = androidx.navigation.NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val codeContent = android.net.Uri.decode(backStackEntry.arguments?.getString("code") ?: "")
+            val codeType = backStackEntry.arguments?.getString("type") ?: "html"
+            
+            CodeCanvasScreen(
+                codeContent = codeContent,
+                codeType = codeType,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
         
