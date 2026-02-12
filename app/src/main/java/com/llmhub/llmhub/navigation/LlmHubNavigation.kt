@@ -6,7 +6,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.DrawerState
@@ -32,6 +31,7 @@ sealed class Screen(val route: String) {
     object Transcriber : Screen("transcriber")
     object ScamDetector : Screen("scam_detector")
     object ImageGenerator : Screen("image_generator")
+    object VibeCoder : Screen("vibe_coder")
     object Settings : Screen("settings")
     object Models : Screen("models")
     object About : Screen("about")
@@ -77,6 +77,7 @@ fun LlmHubNavigation(
                         "transcriber" -> navController.navigate(Screen.Transcriber.route)
                         "scam_detector" -> navController.navigate(Screen.ScamDetector.route)
                         "image_generator" -> navController.navigate(Screen.ImageGenerator.route)
+                        "vibe_coder" -> navController.navigate(Screen.VibeCoder.route)
                     }
                 },
                 onNavigateToSettings = {
@@ -164,6 +165,13 @@ fun LlmHubNavigation(
         
         composable(Screen.ImageGenerator.route) {
             ImageGeneratorScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToModels = { navController.navigate(Screen.Models.route) }
+            )
+        }
+        
+        composable(Screen.VibeCoder.route) {
+            VibeCoderScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToModels = { navController.navigate(Screen.Models.route) }
             )
