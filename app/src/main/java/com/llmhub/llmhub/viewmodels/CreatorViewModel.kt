@@ -226,20 +226,26 @@ class CreatorViewModel(
                     ICON: [A single emoji representing the agent]
                     DESCRIPTION: [A short 1-sentence description]
                     SYSTEM_PROMPT:
-                    [The detailed system prompt for the agent to follow. Use "You are..." phrasing. Include Personality, Context, Task, and Format instructions.]
+                    [The detailed system prompt for the agent to follow. Use "You are..." phrasing. Include Personality, Context, Task, and Format instructions. USE MARKDOWN FORMATTING for clarity (bolding, lists, etc).]
                     
                     Do not add any other text or conversational filler. Just the format above.
                 """.trimIndent()
 
-                val response = inferenceService.generateResponse(metaPrompt, model)
-                
-                val parsedCreator = parseResponse(response, userPrompt)
-                if (parsedCreator != null) {
-                    _generatedCreator.value = parsedCreator
-                } else {
-                    _error.value = "Failed to parse generation result. Try again."
+                // Add 90-second timeout
+                withTimeout(90_000L) {
+                    val response = inferenceService.generateResponse(metaPrompt, model)
+                    
+                    val parsedCreator = parseResponse(response, userPrompt)
+                    if (parsedCreator != null) {
+                        _generatedCreator.value = parsedCreator
+                    } else {
+                        _error.value = "Failed to parse generation result. Try again."
+                    }
                 }
 
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                Log.e("CreatorViewModel", "Generation timed out", e)
+                _error.value = "Generation timed out (90s limit). Please try a simpler prompt or faster model."
             } catch (e: Exception) {
                 Log.e("CreatorViewModel", "Generation failed", e)
                 _error.value = "Error: ${e.message}"

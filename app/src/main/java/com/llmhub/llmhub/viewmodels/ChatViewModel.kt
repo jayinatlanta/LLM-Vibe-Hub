@@ -1294,6 +1294,17 @@ class ChatViewModel(
                                             if (ragContext.isNotEmpty()) {
                                                 basePrompt = basePrompt.replace("\nassistant:", "${ragContext}\nassistant:")
                                             }
+                                            
+                                            // Inject Creator Persona if active
+                                            val creator = _currentCreator.value
+                                            if (creator != null && creator.pctfPrompt.isNotBlank()) {
+                                                Log.d("ChatViewModel", "Injecting Creator Persona: ${creator.name}")
+                                                // Prepend the system prompt. We use a clear separation.
+                                                // Some models handle "system:" tag, others just take the first segment.
+                                                // We'll use a "System:" prefix to be consistent with the chat format.
+                                                basePrompt = "system: ${creator.pctfPrompt}\n\n$basePrompt"
+                                            }
+                                            
                                             basePrompt
                                         }
                                     } else {
