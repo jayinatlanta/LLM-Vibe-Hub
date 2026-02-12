@@ -488,12 +488,13 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     
     /**
      * Build the Architect Spec Prompt (Step 1)
+     * Simplified to a "Technical Assistant" role that generates a concise Requirements List.
      */
     private fun buildSpecPrompt(userRequest: String, currentCode: String): String {
         val isRevision = currentCode.isNotBlank()
         return """
-            You are a Senior Technical Product Manager and Software Architect.
-            Your goal is to analyze the user's request and create a detailed technical specification for a developer to implement.
+            You are a helpful Technical Assistant.
+            Your goal is to expand the user's request into a clear, concise list of functional requirements.
             
             CONTEXT:
             ${if (isRevision) "The user wants to MODIFY this existing code:\n$currentCode" else "This is a NEW project request."}
@@ -501,42 +502,32 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             USER REQUEST: "$userRequest"
             
             TASK:
-            1. Analyze the request.
-            2. If modifying, identify specific changes to the existing code while maintaining its structure.
-            3. If new, plan the entire architecture.
-            4. Create a "Vibe Specification" in Markdown.
+            1. Identify the core features needed.
+            2. List specific UI elements required (buttons, inputs, displays).
+            3. Define the basic logic flow (e.g., "User clicks -> Update Score").
+            4. Keep it brief and actionable.
             
-            SPECIFICATION FORMAT:
-            # [App Name]
-            ## Core Functionality
-            - [Feature 1]
-            - [Feature 2]
-            ## UI Architecture
-            - [Element]: [ID] - [Description]
-            - Layout structure (Container -> Header -> Content -> Footer)
-            - History/Logs: [Required] Must include a visible list of previous actions/moves.
-            - Visuals: Use SVG/Canvas for graphics (NO external images).
-            ## Data State
-            - [Variable Name]: [Type] - [Description] (e.g., score, historyLog, etc.)
-            ## Logic Flow
-            - [Action] -> [State Change] -> [UI Update]
+            OUTPUT FORMAT:
+            - Feature: [Description]
+            - UI: [Element]
+            - Logic: [Rule]
             
-            Output ONLY the specification. Do not write code.
+            Output ONLY the list. Do not write code or introductions.
         """.trimIndent()
     }
 
     /**
      * Build the Developer Implementation Prompt (Step 2)
      */
-    private fun buildImplementationPrompt(spec: String, isRevision: Boolean): String {
+    private fun buildImplementationPrompt(requirements: String, isRevision: Boolean): String {
         return """
             You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
-            Your task is to generate clean, functional code based on the Technical Specification provided below. The code will run in an offline interpreter.
+            Your task is to generate clean, functional code based on the Requirements provided below. The code will run in an offline interpreter.
             
-            TECHNICAL SPECIFICATION:
-            $spec
+            REQUIREMENTS:
+            $requirements
             
-            Think about how to meet this specification for the best stand-alone functional code to delight the user.
+            Think about how to meet these requirements for the best stand-alone functional code to delight the user.
 
             CONSTRAINTS:
             Generate code that is:

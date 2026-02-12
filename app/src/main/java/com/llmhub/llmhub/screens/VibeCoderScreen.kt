@@ -176,11 +176,29 @@ fun VibeCoderScreen(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.vibe_coder_prompt_label),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.vibe_coder_prompt_label),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.weight(1f))
+                            if (generatedCode.isNotBlank()) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "Modification Mode",
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
+                        }
                         
                         OutlinedTextField(
                             value = promptText,
@@ -228,7 +246,10 @@ fun VibeCoderScreen(
                                         modifier = Modifier.size(20.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.vibe_coder_generate))
+                                    Text(
+                                        if (generatedCode.isNotBlank()) "Refine Code" 
+                                        else stringResource(R.string.vibe_coder_generate)
+                                    )
                                 }
                             }
                             
@@ -242,7 +263,7 @@ fun VibeCoderScreen(
                                     .padding(end = 0.dp),
                                 colors = ButtonDefaults.outlinedButtonColors()
                             ) {
-                                Icon(Icons.Default.Clear, contentDescription = null)
+                                Icon(Icons.Default.Clear, contentDescription = "New Project / Clear Context")
                             }
                         }
                     }
