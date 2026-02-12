@@ -91,7 +91,8 @@ fun CodeCanvasScreen(
                         settings.apply {
                             // Security settings
                             javaScriptEnabled = true
-                            domStorageEnabled = false
+                            // Allow DOM storage for interactive pages
+                            domStorageEnabled = true
                             databaseEnabled = false
                             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
                             
@@ -117,7 +118,8 @@ fun CodeCanvasScreen(
                         // Sanitize and load HTML content
                         try {
                             val sanitizedHtml = sanitizeHtml(codeContent)
-                            loadData(sanitizedHtml, "text/html", "utf-8")
+                            // Use loadDataWithBaseURL so inline scripts execute correctly
+                            loadDataWithBaseURL(null, sanitizedHtml, "text/html", "utf-8", null)
                         } catch (e: Exception) {
                             hasError = true
                             errorMessage = e.message ?: "Failed to load content"
@@ -143,14 +145,36 @@ private fun sanitizeHtml(htmlContent: String): String {
     
     var sanitized = htmlContent
     
-    // Remove script tags and content
-    sanitized = sanitized.replace(Regex("<script[^>]*>.*?</script>", RegexOption.DOT_MATCHES_ALL), "")
-    
-    // Remove on* event handlers
+    // Preserve inline <script> content but strip external script src to avoid network loads
+    // Remove src attributes from script tags (disallow external scripts)
+    sanitized = sanitized.replace(Regex("(<script\\b[^>]*?)\\s+src\\s*=\\s*(['\"]).*?\\2", RegexOption.IGNORE_CASE), "$1")
+
+    // Remove on* event handlers (avoid inline handlers that may be unsafe)
     sanitized = sanitized.replace(Regex("""on\w+\s*="""), "")
-    
-    // Remove javascript: protocol
+
+    // Remove javascript: protocol occurrences
     sanitized = sanitized.replace(Regex("""javascript:\s*""", RegexOption.IGNORE_CASE), "")
+
+    // If the generated script references common IDs but doesn't define element variables,
+    // inject a small initializer to bind them to DOM elements. This helps fix common LLM mistakes
+    // where code references messageElement / attemptsElement / guessElement without initializing.
+    val needsInit = (sanitized.contains("messageElement") || sanitized.contains("attemptsElement") || sanitized.contains("guessElement"))
+    val hasGetById = sanitized.contains("document.getElementById", ignoreCase = true)
+    if (needsInit && !hasGetById) {
+        val initScript = """
+            <script>
+            const messageElement = document.getElementById('message');
+            const attemptsElement = document.getElementById('attempts');
+            const guessElement = document.getElementById('guessField');
+            </script>
+        """.trimIndent()
+        // Inject before closing </head> if present, otherwise prepend
+        sanitized = if (sanitized.contains("</head>", ignoreCase = true)) {
+            sanitized.replaceFirst("</head>", initScript + "</head>")
+        } else {
+            initScript + sanitized
+        }
+    }
     
     // Wrap in HTML structure if not present
     if (!sanitized.contains("<html", ignoreCase = true)) {

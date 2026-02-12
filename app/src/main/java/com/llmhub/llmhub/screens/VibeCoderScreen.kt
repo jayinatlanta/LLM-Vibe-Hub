@@ -28,8 +28,11 @@ import com.llmhub.llmhub.components.ModelSelectorCard
 import com.llmhub.llmhub.viewmodels.VibeCoderViewModel
 import com.llmhub.llmhub.viewmodels.CodeLanguage
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun VibeCoderScreen(
     onNavigateBack: () -> Unit,
@@ -40,6 +43,8 @@ fun VibeCoderScreen(
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
     val clipboardManager = LocalClipboardManager.current
+    val promptBringRequester = remember { BringIntoViewRequester() }
+    var promptFocused by remember { mutableStateOf(false) }
     
     // UI State
     var promptText by remember { mutableStateOf("") }
@@ -68,7 +73,6 @@ fun VibeCoderScreen(
             viewModel.clearError()
         }
     }
-    
     // Auto-scroll to bottom when code is being generated
     LaunchedEffect(generatedCode) {
         if (generatedCode.isNotEmpty() && isProcessing) {
@@ -151,7 +155,9 @@ fun VibeCoderScreen(
                             onValueChange = { promptText = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(120.dp),
+                                .height(120.dp)
+                                .bringIntoViewRequester(promptBringRequester)
+                                .onFocusChanged { promptFocused = it.isFocused },
                             placeholder = {
                                 Text(stringResource(R.string.vibe_coder_prompt_hint))
                             },
