@@ -288,6 +288,16 @@ class CreatorViewModel(
         }
     }
     
+    fun deleteCreator(creator: CreatorEntity) {
+        viewModelScope.launch {
+            try {
+                repository.deleteCreator(creator)
+            } catch (e: Exception) {
+                _error.value = "Failed to delete creator: ${e.message}"
+            }
+        }
+    }
+    
     fun clearError() {
         _error.value = null
     }

@@ -73,32 +73,11 @@ fun ChatDrawer(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(creators) { creator ->
-                         Surface(
-                            onClick = { onNavigateToChat(creator.id) }, // Navigate with creator ID
-                            shape = MaterialTheme.shapes.medium,
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = creator.icon,
-                                    style = MaterialTheme.typography.titleMedium
-                                )
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Text(
-                                    text = creator.name,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
+                        CreatorItem(
+                            creator = creator,
+                            onClick = { onNavigateToChat(creator.id) },
+                            onDelete = { viewModel.deleteCreator(creator) }
+                        )
                     }
                 }
             }

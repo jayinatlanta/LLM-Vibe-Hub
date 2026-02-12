@@ -44,4 +44,8 @@ class ChatDrawerViewModel(application: Application) : AndroidViewModel(applicati
     fun deleteAllChats() = viewModelScope.launch {
         repository.deleteAllChats()
     }
+    
+    fun deleteCreator(creator: com.llmhub.llmhub.data.CreatorEntity) = viewModelScope.launch {
+        repository.deleteCreator(creator)
+    }
 } 
