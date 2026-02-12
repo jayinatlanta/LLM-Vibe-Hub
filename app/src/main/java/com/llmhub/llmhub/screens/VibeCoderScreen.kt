@@ -82,6 +82,7 @@ fun VibeCoderScreen(
     val isModelLoaded by viewModel.isModelLoaded.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
+    val isPlanning by viewModel.isPlanning.collectAsState()
     val generatedCode by viewModel.generatedCode.collectAsState()
     val codeLanguage by viewModel.codeLanguage.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
@@ -123,7 +124,7 @@ fun VibeCoderScreen(
                 },
                 actions = {
                     Text(
-                        text = "v0.4",
+                        text = "v0.5",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(end = 8.dp)
                     )
@@ -298,7 +299,7 @@ fun VibeCoderScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = stringResource(R.string.vibe_coder_generating),
+                                text = if (isPlanning) "Planning architecture..." else stringResource(R.string.vibe_coder_generating),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

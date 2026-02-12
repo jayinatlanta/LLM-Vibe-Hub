@@ -54,6 +54,11 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isProcessing = MutableStateFlow(false)
     val isProcessing: StateFlow<Boolean> = _isProcessing.asStateFlow()
     
+    private val _isPlanning = MutableStateFlow(false)
+    val isPlanning: StateFlow<Boolean> = _isPlanning.asStateFlow()
+    
+    private var currentSpec: String = ""
+    
     // Generated code & metadata
     private val _generatedCode = MutableStateFlow("")
     val generatedCode: StateFlow<String> = _generatedCode.asStateFlow()
@@ -264,13 +269,42 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             )
             
             try {
-                val fullPrompt = buildPrompt(prompt)
-                val chatId = "vibe-coder-${UUID.randomUUID()}"
+                // Step 1: Architect (Meta-Prompting)
+                // If we have existing code and the prompt implies a revision, treat it as such.
+                // Otherwise, treat as a new project/spec.
+                val currentCode = _generatedCode.value
+                val isRevision = currentCode.isNotBlank() && !prompt.equals("new", ignoreCase = true)
+                
+                _isPlanning.value = true
+                val specPrompt = buildSpecPrompt(prompt, if (isRevision) currentCode else "")
+                val specChatId = "vibe-spec-${UUID.randomUUID()}"
+                
+                // Generate Spec (Synchronously for now, or just use the first response)
+                // We use a separate generation call for the spec
+                val specResponseFlow = inferenceService.generateResponseStreamWithSession(
+                    prompt = specPrompt,
+                    model = model,
+                    chatId = specChatId,
+                    images = emptyList(),
+                    audioData = null,
+                    webSearchEnabled = false
+                )
+                
+                var builtSpec = ""
+                specResponseFlow.collect { token ->
+                    builtSpec += token
+                }
+                currentSpec = builtSpec
+                _isPlanning.value = false
+                
+                // Step 2: Coder (Implementation)
+                val implementationPrompt = buildImplementationPrompt(builtSpec, isRevision)
+                val codeChatId = "vibe-coder-${UUID.randomUUID()}"
                 
                 val responseFlow = inferenceService.generateResponseStreamWithSession(
-                    prompt = fullPrompt,
+                    prompt = implementationPrompt,
                     model = model,
-                    chatId = chatId,
+                    chatId = codeChatId,
                     images = emptyList(),
                     audioData = null,
                     webSearchEnabled = false
@@ -303,6 +337,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 // Reset parameters to defaults (null)
                 inferenceService.setGenerationParameters(null, null, null, null)
                 _isProcessing.value = false
+                _isPlanning.value = false
                 processingJob = null
             }
         }
@@ -407,6 +442,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearCode() {
         _generatedCode.value = ""
         _codeLanguage.value = CodeLanguage.UNKNOWN
+        currentSpec = ""
     }
     
     /**
@@ -417,16 +453,56 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     }
     
     /**
-     * Build the system prompt for code generation
+     * Build the Architect Spec Prompt (Step 1)
      */
-    private fun buildPrompt(userPrompt: String): String {
+    private fun buildSpecPrompt(userRequest: String, currentCode: String): String {
+        val isRevision = currentCode.isNotBlank()
+        return """
+            You are a Senior Technical Product Manager and Software Architect.
+            Your goal is to analyze the user's request and create a detailed technical specification for a developer to implement.
+            
+            CONTEXT:
+            ${if (isRevision) "The user wants to MODIFY this existing code:\n$currentCode" else "This is a NEW project request."}
+            
+            USER REQUEST: "$userRequest"
+            
+            TASK:
+            1. Analyze the request.
+            2. If modifying, identify specific changes to the existing code while maintaining its structure.
+            3. If new, plan the entire architecture.
+            4. Create a "Vibe Specification" in Markdown.
+            
+            SPECIFICATION FORMAT:
+            # [App Name]
+            ## Core Functionality
+            - [Feature 1]
+            - [Feature 2]
+            ## UI Architecture
+            - [Element]: [ID] - [Description]
+            - Layout structure (Container -> Header -> Content -> Footer)
+            - History/Logs: [Required] Must include a visible list of previous actions/moves.
+            - Visuals: Use SVG/Canvas for graphics (NO external images).
+            ## Data State
+            - [Variable Name]: [Type] - [Description] (e.g., score, historyLog, etc.)
+            ## Logic Flow
+            - [Action] -> [State Change] -> [UI Update]
+            
+            Output ONLY the specification. Do not write code.
+        """.trimIndent()
+    }
+
+    /**
+     * Build the Developer Implementation Prompt (Step 2)
+     */
+    private fun buildImplementationPrompt(spec: String, isRevision: Boolean): String {
         return """
             You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
-            Your task is to generate clean, functional code based on the current user request. The code will run in an offline interpreter.
-
-            User request: $userPrompt
-
-            Think about how to meet the user's request for the best stand-alone functional code to delight the user, considering the constraints and requirements that follow.
+            Your task is to generate clean, functional code based on the Technical Specification provided below. The code will run in an offline interpreter.
+            
+            TECHNICAL SPECIFICATION:
+            $spec
+            
+            Think about how to meet this specification for the best stand-alone functional code to delight the user.
 
             CONSTRAINTS:
             Generate code that is:
@@ -447,6 +523,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - Games should maintain a functional game state (Score, Win/Loss messages, turn history, etc.) in the UI. Turn history would be a list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
             - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
             - FUNCTIONAL UI: Ensure ALL UI elements (including SVGs, Canvas) are functional and wired to the script. Do NOT add decorative elements that do nothing.
+            - EVENT DRIVEN: Do NOT use blocking loops (while/for) to wait for user input. Use event listeners and state variables to handle user interactions asynchronously.
             
             REQUIREMENTS FOR UTILITY APPS (Calculators, Converters, Tools):
             - Use clear, labeled forms with appropriate input types (number, text, etc.).
