@@ -79,8 +79,9 @@ fun ChatScreen(
     onNavigateToSettings: () -> Unit,
     onNavigateToModels: () -> Unit,
     onNavigateToChat: (String) -> Unit,
+    onNavigateToCreatorChat: (String) -> Unit,
     onNavigateBack: () -> Unit,
-    drawerState: androidx.compose.material3.DrawerState
+    drawerState: DrawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
 ) {
     val viewModel: ChatViewModel = viewModel(
         key = "chat_$chatId",
@@ -139,7 +140,8 @@ fun ChatScreen(
     }
 
     // Initialize chat - only run once per chatId or when context changes
-    LaunchedEffect(chatId) {
+    // Initialize chat - only run once per chatId/creatorId or when context changes
+    LaunchedEffect(chatId, creatorId) {
         viewModel.initializeChat(chatId, context, creatorId)
     }
     
@@ -185,6 +187,12 @@ fun ChatScreen(
                         drawerState.close()
                     }
                     onNavigateToModels()
+                },
+                onNavigateToCreatorChat = { creatorId ->
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateToCreatorChat(creatorId)
                 },
                 onNavigateBack = {
                     coroutineScope.launch {

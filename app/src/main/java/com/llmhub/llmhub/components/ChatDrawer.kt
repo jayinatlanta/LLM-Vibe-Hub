@@ -34,6 +34,7 @@ fun ChatDrawer(
     onNavigateToSettings: () -> Unit,
     onNavigateToModels: () -> Unit,
     onNavigateBack: () -> Unit,
+    onNavigateToCreatorChat: (String) -> Unit,
     onClearAllChats: (() -> Unit)? = null,
     viewModel: ChatDrawerViewModel = viewModel()
 ) {
@@ -75,7 +76,7 @@ fun ChatDrawer(
                     items(creators) { creator ->
                         CreatorItem(
                             creator = creator,
-                            onClick = { onNavigateToChat(creator.id) },
+                            onClick = { onNavigateToCreatorChat(creator.id) },
                             onDelete = { viewModel.deleteCreator(creator) }
                         )
                     }

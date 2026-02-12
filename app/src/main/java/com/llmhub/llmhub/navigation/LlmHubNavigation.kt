@@ -146,6 +146,11 @@ fun LlmHubNavigation(
                         popUpTo(Screen.Chat.route) { inclusive = true }
                     }
                 },
+                onNavigateToCreatorChat = { newCreatorId ->
+                    navController.navigate(Screen.Chat.createRoute("new", newCreatorId)) {
+                        popUpTo(Screen.Chat.route) { inclusive = true }
+                    }
+                },
                 onNavigateBack = {
                     navController.popBackStack(Screen.Home.route, inclusive = false)
                 },
