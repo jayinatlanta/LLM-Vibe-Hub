@@ -99,10 +99,133 @@ fun ChatScreen(
     val selectedModel by viewModel.selectedModel.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
     
+    // Creator state for header
+    val currentCreator by viewModel.currentCreator.collectAsState()
+    
     // RAG state
     val isRagReady by viewModel.isRagReady.collectAsState()
     val ragStatus by viewModel.ragStatus.collectAsState()
     val documentCount by viewModel.documentCount.collectAsState()
+    
+    // Embedding state
+    val isEmbeddingEnabled by viewModel.isEmbeddingEnabled.collectAsState()
+    
+    // TTS Service - use ViewModel's TTS service (same instance for auto-readout and manual)
+    val ttsService = viewModel.ttsService
+    val isTtsSpeaking by ttsService.isSpeaking.collectAsState()
+    // Track TTS message from ViewModel (for auto-readout) and local manual TTS
+    val viewModelTtsMessageId by viewModel.currentTtsMessageId.collectAsState()
+    var manualTtsMessageId by remember { mutableStateOf<String?>(null) }
+    // Combined: use ViewModel's ID if set (auto-readout), otherwise use manual ID
+    val currentTtsMessageId = viewModelTtsMessageId ?: manualTtsMessageId
+    
+    // Settings bottom sheet state
+    var showSettingsSheet by remember { mutableStateOf(false) }
+    
+    val listState = rememberLazyListState()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    
+    // Edit-last-prompt state
+    var isEditingLastPrompt by remember { mutableStateOf(false) }
+    var editedPromptText by remember { mutableStateOf("") }
+    val latestUserMessage = messages.lastOrNull { it.isFromUser }
+
+    // Auto-scroll to bottom when a new message finishes
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(0)
+        }
+    }
+
+    // Initialize chat - only run once per chatId or when context changes
+    LaunchedEffect(chatId) {
+        viewModel.initializeChat(chatId, context, creatorId)
+    }
+    
+    // Sync model state immediately to show icons
+    LaunchedEffect(Unit) {
+        // Force immediate sync
+        viewModel.syncCurrentlyLoadedModel()
+    }
+    
+    // Also sync when the currently loaded model changes
+    LaunchedEffect(viewModel.currentlyLoadedModel) {
+        viewModel.syncCurrentlyLoadedModel()
+    }
+    
+    // Unload model when leaving the chat screen to free memory. Selection is kept so
+    // when the user returns, the same model can be loaded again on next send.
+    // Unload when leaving Chat is handled in LlmHubNavigation (route observer); no unload on dispose so new chat doesn't reload.
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ChatDrawer(
+                onNavigateToChat = { newChatId ->
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateToChat(newChatId)
+                },
+                onCreateNewChat = {
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateToChat("new")
+                },
+                onNavigateToSettings = {
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateToSettings()
+                },
+                onNavigateToModels = {
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateToModels()
+                },
+                onNavigateBack = {
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    onNavigateBack()
+                },
+                onClearAllChats = {
+                    coroutineScope.launch {
+                        drawerState.close()
+                    }
+                    viewModel.clearAllChatsAndCreateNew(context)
+                    onNavigateToChat("new")
+                }
+            )
+        }
+    ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    // Avoid a fixed title height so the title / chips stay vertically centered
+                    // across portrait/landscape and larger tablet screens.
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        val headerTitle = when {
+                            currentChat != null -> currentChat!!.title
+                            currentCreator != null -> "${currentCreator!!.icon} ${currentCreator!!.name}"
+                            else -> stringResource(R.string.chat) // "New Chat" or similar
+                        }
+                        
+                        Text(
+                            text = headerTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        // ...
     
     // Embedding state
     val isEmbeddingEnabled by viewModel.isEmbeddingEnabled.collectAsState()
@@ -209,8 +332,17 @@ fun ChatScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.Center
                         ) {
+                            val headerTitle = when {
+                                // If we have a current chat with a title, use it
+                                currentChat != null -> currentChat!!.title
+                                // If no chat yet but we have a selected creator, use their name
+                                currentCreator != null -> "${currentCreator!!.icon} ${currentCreator!!.name}"
+                                // Fallback to generic "New Chat"
+                                else -> stringResource(R.string.drawer_new_chat)
+                            }
+                            
                             Text(
-                                text = currentChat?.title ?: stringResource(R.string.chat),
+                                text = headerTitle,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 2,
@@ -447,6 +579,7 @@ fun ChatScreen(
                 }
             }
         }
+    }
     }
     
     // Settings Bottom Sheet for model selection and configuration

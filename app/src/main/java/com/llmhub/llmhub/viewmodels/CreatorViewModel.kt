@@ -228,7 +228,7 @@ class CreatorViewModel(
                     ICON: [A single emoji representing the agent]
                     DESCRIPTION: [A short 1-sentence description]
                     SYSTEM_PROMPT:
-                    [The detailed system prompt for the agent to follow. Use "You are..." phrasing. Include Personality, Context, Task, and Format instructions. USE MARKDOWN FORMATTING for clarity (bolding, lists, etc).]
+                    [System prompt the agent must follow. Include concise, firm instructions on Personality, Context, Task, and Format that would meet the User Description goals. Use markdown for clarity (bolding, lists, etc).]
                     
                     Do not add any other text or conversational filler. Just the format above.
                 """.trimIndent()
@@ -273,7 +273,7 @@ class CreatorViewModel(
                 name = name,
                 icon = icon,
                 description = description,
-                pctfPrompt = systemPrompt
+                pctfPrompt = "CRITICAL INSTRUCTIONS:\n\n" + systemPrompt
             )
         } catch (e: Exception) {
             Log.e("CreatorViewModel", "Parsing failed", e)

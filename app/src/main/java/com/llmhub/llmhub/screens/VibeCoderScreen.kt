@@ -124,9 +124,9 @@ fun VibeCoderScreen(
                 },
                 actions = {
                     Text(
-                        text = "v1.0",
+                        text = "v1.1",
                         style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 16.dp)
                     )
                     IconButton(onClick = { showSettingsSheet = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")

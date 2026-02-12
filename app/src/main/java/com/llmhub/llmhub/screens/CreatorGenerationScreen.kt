@@ -90,7 +90,7 @@ fun CreatorGenerationScreen(
                 },
                 actions = {
                     Text(
-                        text = "v1.0",
+                        text = "v1.1",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(end = 16.dp)
                     )
