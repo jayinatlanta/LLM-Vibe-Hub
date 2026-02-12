@@ -579,7 +579,7 @@ fun ChatScreen(
                 }
             }
         }
-    }
+        }
     }
     
     // Settings Bottom Sheet for model selection and configuration
@@ -619,7 +619,7 @@ fun ChatScreen(
         )
     }
 }
-    
+
 @Composable
 private fun WelcomeMessage(
     currentModel: String,
