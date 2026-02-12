@@ -312,6 +312,9 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 currentSpec = builtSpec
                 _isPlanning.value = false
                 
+                // DEBUG: Log the Architect's generated requirements
+                Log.d("VibeCoderVM", "Architect Requirements:\n$builtSpec")
+                
                 // CRITICAL: Explicitly reset the session between Architect and Coder phases
                 // This ensures the Coder phase starts with a clean slate and avoids "Previous invocation still processing"
                 // or token limit issues from the large spec generation.
@@ -535,15 +538,14 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - Well-commented where appropriate
             - Self-contained (no external dependencies)
             
-            CONSTRAINT: NO EXTERNAL RESOURCES
-            - Do NOT use external images (<img> src must be data URI or SVG directly in code).
-            - Do NOT use external scripts (CDNs) or CSS files.
-            - Use standard HTML5/CSS3/ES6+ features.
-            - For graphics, use inline SVG, Canvas API, or CSS shapes.
-            - Provide a professional, polished look.
+            CRITICAL ANTI-PATTERNS (DO NOT DO THIS):
+            - NO BLOCKING LOOPS: Never use 'while' or 'for' loops to manage turns or wait for user input (e.g., `while(guesses < 7)`). This freezes the browser.
+            - NO ALERTS: Do not use `alert()` or `prompt()`. Use HTML elements for output and input.
+            - NO EXTERNAL RESOURCES: No external images, CSS, or JS files.
             
             REQUIREMENTS FOR APPS/GAMES (HTML/JS):
             - Create a complete, standalone Single Page Application (SPA).
+            - Game Loop: State must persist between events. Each button click = one update.
             - ALWAYS include a "Reset" or "New" button to restart the application state.
             - Games should maintain a functional game state (Score, Win/Loss messages, turn history, etc.) in the UI. Turn history would be a list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
             - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
