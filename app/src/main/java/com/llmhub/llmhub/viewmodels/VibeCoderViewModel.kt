@@ -276,29 +276,63 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 val isRevision = currentCode.isNotBlank() && !prompt.equals("new", ignoreCase = true)
                 
                 _isPlanning.value = true
-                val specPrompt = buildSpecPrompt(prompt, if (isRevision) currentCode else "")
-                val specChatId = "vibe-spec-${UUID.randomUUID()}"
-                
-                // Generate Spec (Synchronously for now, or just use the first response)
-                // We use a separate generation call for the spec
-                val specResponseFlow = inferenceService.generateResponseStreamWithSession(
-                    prompt = specPrompt,
-                    model = model,
-                    chatId = specChatId,
-                    images = emptyList(),
-                    audioData = null,
-                    webSearchEnabled = false
-                )
-                
                 var builtSpec = ""
-                specResponseFlow.collect { token ->
-                    builtSpec += token
+                
+                try {
+                    // Timeout for planning phase (30 seconds)
+                    // If it takes longer, we skip planning and go straight to coding
+                    kotlinx.coroutines.withTimeout(30_000L) {
+                        val specPrompt = buildSpecPrompt(prompt, if (isRevision) currentCode else "")
+                        val specChatId = "vibe-spec-${UUID.randomUUID()}"
+                        
+                        // Generate Spec
+                        val specResponseFlow = inferenceService.generateResponseStreamWithSession(
+                            prompt = specPrompt,
+                            model = model,
+                            chatId = specChatId,
+                            images = emptyList(),
+                            audioData = null,
+                            webSearchEnabled = false
+                        )
+                        
+                        specResponseFlow.collect { token ->
+                            builtSpec += token
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("VibeCoderVM", "Planning phase failed or timed out: ${e.message}. Falling back to direct generation.")
+                    // Ensure session is reset if we timed out, to clear any stuck state
+                    try {
+                        inferenceService.resetChatSession("vibe-spec-cleanup")
+                    } catch (resetEx: Exception) {
+                        Log.e("VibeCoderVM", "Failed to reset session after planning failure", resetEx)
+                    }
                 }
+                
                 currentSpec = builtSpec
                 _isPlanning.value = false
                 
+                // CRITICAL: Explicitly reset the session between Architect and Coder phases
+                // This ensures the Coder phase starts with a clean slate and avoids "Previous invocation still processing"
+                // or token limit issues from the large spec generation.
+                // We use a different chat ID for the coder anyway, but resetting ensures the single shared session is ready.
+                try {
+                    inferenceService.resetChatSession("vibe-spec-handoff")
+                    // Give it a moment to clear
+                    kotlinx.coroutines.delay(200)
+                } catch (e: Exception) {
+                    Log.w("VibeCoderVM", "Session reset between phases failed: ${e.message}")
+                }
+                
                 // Step 2: Coder (Implementation)
-                val implementationPrompt = buildImplementationPrompt(builtSpec, isRevision)
+                // If spec is empty (failed), we fall back to a direct prompt strategy
+                val implementationPrompt = if (builtSpec.isNotBlank()) {
+                    buildImplementationPrompt(builtSpec, isRevision)
+                } else {
+                    // Fallback: Use the original direct prompt logic
+                    buildPrompt(prompt)
+                }
+                
                 val codeChatId = "vibe-coder-${UUID.randomUUID()}"
                 
                 val responseFlow = inferenceService.generateResponseStreamWithSession(
