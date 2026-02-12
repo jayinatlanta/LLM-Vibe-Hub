@@ -149,8 +149,8 @@ private fun sanitizeHtml(htmlContent: String): String {
     // Remove src attributes from script tags (disallow external scripts)
     sanitized = sanitized.replace(Regex("(<script\\b[^>]*?)\\s+src\\s*=\\s*(['\"]).*?\\2", RegexOption.IGNORE_CASE), "$1")
 
-    // Remove on* event handlers (avoid inline handlers that may be unsafe)
-    sanitized = sanitized.replace(Regex("""on\w+\s*="""), "")
+    // Remove most on* event handlers but preserve `onclick` so generated UIs still respond to clicks.
+    sanitized = sanitized.replace(Regex("""on(?!click)\\w+\s*=""", RegexOption.IGNORE_CASE), "")
 
     // Remove javascript: protocol occurrences
     sanitized = sanitized.replace(Regex("""javascript:\s*""", RegexOption.IGNORE_CASE), "")
@@ -163,9 +163,11 @@ private fun sanitizeHtml(htmlContent: String): String {
     if (needsInit && !hasGetById) {
         val initScript = """
             <script>
-            const messageElement = document.getElementById('message');
-            const attemptsElement = document.getElementById('attempts');
-            const guessElement = document.getElementById('guessField');
+            try {
+                window.messageElement = document.getElementById('message');
+                window.attemptsElement = document.getElementById('attempts');
+                window.guessElement = document.getElementById('guessField') || document.getElementById('guessInput');
+            } catch(e) { /* noop */ }
             </script>
         """.trimIndent()
         // Inject before closing </head> if present, otherwise prepend

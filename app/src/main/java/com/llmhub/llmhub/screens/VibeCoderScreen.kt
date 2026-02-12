@@ -31,6 +31,10 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.runtime.DisposableEffect
+import android.graphics.Rect
+import android.view.ViewTreeObserver
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
@@ -45,6 +49,27 @@ fun VibeCoderScreen(
     val clipboardManager = LocalClipboardManager.current
     val promptBringRequester = remember { BringIntoViewRequester() }
     var promptFocused by remember { mutableStateOf(false) }
+    // Detect keyboard (IME) visibility via root view global layout and trigger bringIntoView
+    val view = LocalView.current
+    val imeVisible = remember { mutableStateOf(false) }
+    DisposableEffect(view) {
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            val r = Rect()
+            view.getWindowVisibleDisplayFrame(r)
+            val screenHeight = view.rootView.height
+            val keypadHeight = screenHeight - r.bottom
+            val visible = keypadHeight > screenHeight * 0.15
+            if (imeVisible.value != visible) imeVisible.value = visible
+        }
+        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+    }
+
+    LaunchedEffect(imeVisible.value) {
+        if (imeVisible.value && promptFocused) {
+            promptBringRequester.bringIntoView()
+        }
+    }
     
     // UI State
     var promptText by remember { mutableStateOf("") }
@@ -97,6 +122,11 @@ fun VibeCoderScreen(
                     }
                 },
                 actions = {
+                    Text(
+                        text = "v0.2",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(end = 8.dp)
+                    )
                     IconButton(onClick = { showSettingsSheet = true }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
