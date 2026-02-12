@@ -245,6 +245,24 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             _generatedCode.value = ""
             _errorMessage.value = null
             
+            // Determine if request is creative/game or utility/precise
+            val isCreative = prompt.contains("game", ignoreCase = true) || 
+                           prompt.contains("story", ignoreCase = true) ||
+                           prompt.contains("art", ignoreCase = true) ||
+                           prompt.contains("creative", ignoreCase = true)
+            
+            // Set optimized parameters based on intent:
+            // - Utility/Math/Code (default): 0.2 temperature for high precision
+            // - Games/Creative: 0.6 temperature for balanced creativity
+            val temperature = if (isCreative) 0.6f else 0.2f
+            
+            inferenceService.setGenerationParameters(
+                maxTokens = 8192,
+                topK = 40,
+                topP = 0.95f,
+                temperature = temperature
+            )
+            
             try {
                 val fullPrompt = buildPrompt(prompt)
                 val chatId = "vibe-coder-${UUID.randomUUID()}"
@@ -282,6 +300,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                     Log.d("VibeCoderVM", "Suppressed error: $message")
                 }
             } finally {
+                // Reset parameters to defaults (null)
+                inferenceService.setGenerationParameters(null, null, null, null)
                 _isProcessing.value = false
                 processingJob = null
             }
@@ -401,14 +421,36 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun buildPrompt(userPrompt: String): String {
         return """
-            You are an expert code generation AI. Your task is to generate clean, functional code based on user requests.
+            You are an expert programmer who is an expert at generating production-ready self-contained stand alone apps and games in HTML and Python. Your task is to generate clean, functional code based on user requests.
             
             Generate code that is:
             - Syntactically correct and ready to run
             - Well-commented where appropriate
             - Self-contained (no external dependencies unless absolutely necessary)
-            - For HTML/JavaScript: Create a complete, standalone Single Page Application (SPA) that works in a browser
-            - For Python: Create a functional script (no external dependencies unless requested)
+            
+            CONSTRAINT: NO EXTERNAL RESOURCES
+            - Do NOT use external images (<img> src must be data URI or SVG directly in code).
+            - Do NOT use external scripts (CDNs) or CSS files.
+            - Use standard HTML5/CSS3/ES6+ features.
+            - For graphics, use inline SVG, Canvas API, or CSS shapes.
+            - Provide a professional, polished look.
+            
+            REQUIREMENTS FOR APPS/GAMES (HTML/JS):
+            - Create a complete, standalone Single Page Application (SPA).
+            - ALWAYS include a "Reset" or "New" button to restart the application state.
+            - Explicitly display game state (Score, Win/Loss messages, etc.) in the UI text.
+            - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
+            
+            REQUIREMENTS FOR UTILITY APPS (Calculators, Converters, Tools):
+            - Use clear, labeled forms with appropriate input types (number, text, etc.).
+            - Validate inputs before processing (show user-friendly error messages).
+            - clearly display results in a distinct output area.
+            - Ensure high precision for calculations.
+            
+            REQUIREMENTS FOR PYTHON:
+            - Create a functional script (no external dependencies unless requested).
+            - Since this runs in a text simulation check, use print() statements to simulate output/state.
+            - For object simulations (e.g., "Park Sim"), create classes and a main execution block that demonstrates the logic.
             
             IMPORTANT:
             - If generating HTML/JavaScript, wrap it in a markdown code block: ```html
