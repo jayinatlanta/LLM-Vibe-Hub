@@ -269,70 +269,73 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             )
             
             try {
-                // Step 1: Architect (Meta-Prompting)
-                // If we have existing code and the prompt implies a revision, treat it as such.
-                // Otherwise, treat as a new project/spec.
+                // Step 1: Architect (Meta-Prompting) vs Direct Modification
+                // If we have existing code and the prompt implies a revision, we SKIP the architect
+                // and go straight to the coder with a "Modification Prompt".
+                // If it's a new project, we use the Architect to plan it first.
+                
                 val currentCode = _generatedCode.value
                 val isRevision = currentCode.isNotBlank() && !prompt.equals("new", ignoreCase = true)
                 
-                _isPlanning.value = true
                 var builtSpec = ""
                 
-                try {
-                    // Timeout for planning phase (30 seconds)
-                    // If it takes longer, we skip planning and go straight to coding
-                    kotlinx.coroutines.withTimeout(30_000L) {
-                        val specPrompt = buildSpecPrompt(prompt, if (isRevision) currentCode else "")
-                        val specChatId = "vibe-spec-${UUID.randomUUID()}"
-                        
-                        // Generate Spec
-                        val specResponseFlow = inferenceService.generateResponseStreamWithSession(
-                            prompt = specPrompt,
-                            model = model,
-                            chatId = specChatId,
-                            images = emptyList(),
-                            audioData = null,
-                            webSearchEnabled = false
-                        )
-                        
-                        specResponseFlow.collect { token ->
-                            builtSpec += token
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.w("VibeCoderVM", "Planning phase failed or timed out: ${e.message}. Falling back to direct generation.")
-                    // Ensure session is reset if we timed out, to clear any stuck state
+                // Only run Architect if this is a NEW project
+                if (!isRevision) {
+                    _isPlanning.value = true
                     try {
-                        inferenceService.resetChatSession("vibe-spec-cleanup")
-                    } catch (resetEx: Exception) {
-                        Log.e("VibeCoderVM", "Failed to reset session after planning failure", resetEx)
+                        // Timeout for planning phase (30 seconds)
+                        kotlinx.coroutines.withTimeout(30_000L) {
+                            val specPrompt = buildSpecPrompt(prompt, "")
+                            val specChatId = "vibe-spec-${UUID.randomUUID()}"
+                            
+                            val specResponseFlow = inferenceService.generateResponseStreamWithSession(
+                                prompt = specPrompt,
+                                model = model,
+                                chatId = specChatId,
+                                images = emptyList(),
+                                audioData = null,
+                                webSearchEnabled = false
+                            )
+                            
+                            specResponseFlow.collect { token ->
+                                builtSpec += token
+                            }
+                        }
+                        
+                        // DEBUG: Log the Architect's generated requirements
+                        Log.d("VibeCoderVM", "Architect Requirements:\n$builtSpec")
+                        
+                        // CRITICAL: Explicitly reset the session between Architect and Coder phases
+                        try {
+                            inferenceService.resetChatSession("vibe-spec-handoff")
+                            kotlinx.coroutines.delay(200)
+                        } catch (e: Exception) {
+                            Log.w("VibeCoderVM", "Session reset between phases failed: ${e.message}")
+                        }
+                        
+                    } catch (e: Exception) {
+                         Log.w("VibeCoderVM", "Planning phase failed or timed out: ${e.message}. Falling back to direct generation.")
+                         try {
+                            inferenceService.resetChatSession("vibe-spec-cleanup")
+                         } catch (resetEx: Exception) {
+                            Log.e("VibeCoderVM", "Failed to reset session after planning failure", resetEx)
+                         }
                     }
+                    _isPlanning.value = false
                 }
                 
                 currentSpec = builtSpec
-                _isPlanning.value = false
                 
-                // DEBUG: Log the Architect's generated requirements
-                Log.d("VibeCoderVM", "Architect Requirements:\n$builtSpec")
-                
-                // CRITICAL: Explicitly reset the session between Architect and Coder phases
-                // This ensures the Coder phase starts with a clean slate and avoids "Previous invocation still processing"
-                // or token limit issues from the large spec generation.
-                // We use a different chat ID for the coder anyway, but resetting ensures the single shared session is ready.
-                try {
-                    inferenceService.resetChatSession("vibe-spec-handoff")
-                    // Give it a moment to clear
-                    kotlinx.coroutines.delay(200)
-                } catch (e: Exception) {
-                    Log.w("VibeCoderVM", "Session reset between phases failed: ${e.message}")
-                }
-                
-                // Step 2: Coder (Implementation)
-                // If spec is empty (failed), we fall back to a direct prompt strategy
-                val implementationPrompt = if (builtSpec.isNotBlank()) {
-                    buildImplementationPrompt(builtSpec, isRevision)
+                // Step 2: Coder (Implementation or Modification)
+                val implementationPrompt = if (isRevision) {
+                    // Direct Modification Flow
+                    Log.d("VibeCoderVM", "Direct Modification Mode")
+                    buildModificationPrompt(prompt, currentCode)
+                } else if (builtSpec.isNotBlank()) {
+                    // Standard Flow (Architect -> Coder)
+                    buildImplementationPrompt(builtSpec)
                 } else {
-                    // Fallback: Use the original direct prompt logic
+                    // Fallback Flow (Direct Prompt)
                     buildPrompt(prompt)
                 }
                 
@@ -522,7 +525,10 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * Build the Developer Implementation Prompt (Step 2)
      */
-    private fun buildImplementationPrompt(requirements: String, isRevision: Boolean): String {
+    /**
+     * Build the Developer Implementation Prompt (Step 2 - New Project)
+     */
+    private fun buildImplementationPrompt(requirements: String): String {
         return """
             You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
             Your task is to generate clean, functional code based on the Requirements provided below. The code will run in an offline interpreter.
@@ -574,6 +580,40 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             ```
             - Respond ONLY with the production-ready stand-alone code in a markdown code block. DO NOT include explanations, warnings, or additional text before or after the code block.
     
+        """.trimIndent()
+    }
+
+    /**
+     * Build the Developer Modification Prompt (Step 2 - Revision)
+     * Direct Code Modification skipping the Architect.
+     */
+    private fun buildModificationPrompt(userRequest: String, currentCode: String): String {
+        return """
+            You are an expert developer. The user wants to MODIFY the existing code below.
+            
+            EXISTING CODE:
+            ```
+            $currentCode
+            ```
+            
+            USER REQUEST: "$userRequest"
+            
+            TASK:
+            1. Analyze the existing code and the user's request.
+            2. Rewrite the FULL code to incorporate the changes.
+            3. Ensure the rest of the application remains functional.
+            
+            CRITICAL ANTI-PATTERNS (DO NOT DO THIS):
+            - NO BLOCKING LOOPS: Never use 'while' or 'for' loops to manage turns or wait for user input (e.g., `while(guesses < 7)`). This freezes the browser.
+            - NO ALERTS: Do not use `alert()` or `prompt()`. Use HTML elements for output and input.
+            - NO EXTERNAL RESOURCES: No external images, CSS, or JS files.
+            - TYPE SAFETY: Never compare `input.value` directly to a number. ALWAYS use `parseInt()` or `Number()` first.
+            - UI INTEGRITY: Do not overwrite elements that contain labels. Use a child `<span>` for the value.
+            
+            IMPORTANT:
+            - Wrap code in ```html or ```python blocks.
+            - Return the FULL modified code, not just a diff.
+            - No explanations.
         """.trimIndent()
     }
 
