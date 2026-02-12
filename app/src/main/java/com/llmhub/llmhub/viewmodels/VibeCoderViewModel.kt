@@ -581,6 +581,63 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     
         """.trimIndent()
     }
+
+    /**
+     * Legacy Prompt Builder (Fallback for v0.4 behavior)
+     * Used when Planning Phase fails or times out.
+     */
+    private fun buildPrompt(userPrompt: String): String {
+        return """
+            You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
+            Your task is to generate clean, functional code based on the current user request. The code will run in an offline interpreter.
+
+            User request: $userPrompt
+
+            Think about how to meet the user's request for the best stand-alone functional code to delight the user, considering the constraints and requirements that follow.
+
+            CONSTRAINTS:
+            Generate code that is:
+            - Syntactically correct and ready to run
+            - Well-commented where appropriate
+            - Self-contained (no external dependencies)
+            
+            CONSTRAINT: NO EXTERNAL RESOURCES
+            - Do NOT use external images (<img> src must be data URI or SVG directly in code).
+            - Do NOT use external scripts (CDNs) or CSS files.
+            - Use standard HTML5/CSS3/ES6+ features.
+            - For graphics, use inline SVG, Canvas API, or CSS shapes.
+            - Provide a professional, polished look.
+            
+            REQUIREMENTS FOR APPS/GAMES (HTML/JS):
+            - Create a complete, standalone Single Page Application (SPA).
+            - ALWAYS include a "Reset" or "New" button to restart the application state.
+            - Games should maintain a functional game state (Score, Win/Loss messages, turn history, etc.) in the UI. Turn history would be a list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
+            - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
+            - FUNCTIONAL UI: Ensure ALL UI elements (including SVGs, Canvas) are functional and wired to the script. Do NOT add decorative elements that do nothing.
+            - EVENT DRIVEN: Do NOT use blocking loops (while/for) to wait for user input. Use event listeners and state variables to handle user interactions asynchronously.
+            
+            REQUIREMENTS FOR UTILITY APPS (Calculators, Converters, Tools):
+            - Use clear, labeled forms with appropriate input types (number, text, etc.).
+            - Validate inputs before processing (show user-friendly error messages).
+            - clearly display results in a distinct output area.
+            - Ensure high precision for calculations.
+            
+            REQUIREMENTS FOR PYTHON:
+            - Create a functional script (no external dependencies).
+            - Since this runs in a text simulation check, use print() statements to simulate output/state.
+            - For object simulations (e.g., "Park Sim"), create classes and a main execution block that demonstrates the logic.
+            
+            IMPORTANT:
+            - If generating HTML/JavaScript, wrap it in a markdown code block: ```html
+            YOUR HTML CODE HERE
+            ```
+            - If generating Python, wrap it in a markdown code block: ```python
+            YOUR PYTHON CODE HERE
+            ```
+            - Respond ONLY with the production-ready stand-alone code in a markdown code block. DO NOT include explanations, warnings, or additional text before or after the code block.
+    
+        """.trimIndent()
+    }
     
     override fun onCleared() {
         super.onCleared()
