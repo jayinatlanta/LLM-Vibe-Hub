@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.llmhub.llmhub.data.CreatorEntity
 import com.llmhub.llmhub.inference.InferenceService
 import com.llmhub.llmhub.repository.ChatRepository
+import com.llmhub.llmhub.data.LLMModel
+import com.llmhub.llmhub.data.ModelAvailabilityProvider
+import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,6 +21,8 @@ class CreatorViewModel(
     private val context: Context
 ) : ViewModel() {
 
+    private val prefs = context.getSharedPreferences("creator_prefs", Context.MODE_PRIVATE)
+
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
@@ -27,6 +32,164 @@ class CreatorViewModel(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    // Model management states
+    private val _availableModels = MutableStateFlow<List<LLMModel>>(emptyList())
+    val availableModels: StateFlow<List<LLMModel>> = _availableModels.asStateFlow()
+
+    private val _selectedModel = MutableStateFlow<LLMModel?>(null)
+    val selectedModel: StateFlow<LLMModel?> = _selectedModel.asStateFlow()
+
+    private val _selectedBackend = MutableStateFlow<LlmInference.Backend?>(null)
+    val selectedBackend: StateFlow<LlmInference.Backend?> = _selectedBackend.asStateFlow()
+
+    private val _isModelLoaded = MutableStateFlow(false)
+    val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    init {
+        loadAvailableModels()
+        loadSavedSettings()
+        checkIfModelIsAlreadyLoaded()
+    }
+
+    private fun checkIfModelIsAlreadyLoaded() {
+        val currentModel = inferenceService.getCurrentlyLoadedModel()
+        if (currentModel != null) {
+            _selectedModel.value = currentModel
+            _isModelLoaded.value = true
+        }
+    }
+
+    private fun loadSavedSettings() {
+        val savedBackendName = prefs.getString("selected_backend", LlmInference.Backend.GPU.name)
+        _selectedBackend.value = try {
+            LlmInference.Backend.valueOf(savedBackendName ?: LlmInference.Backend.GPU.name)
+        } catch (_: IllegalArgumentException) {
+            LlmInference.Backend.GPU
+        }
+
+        val savedModelName = prefs.getString("selected_model_name", null)
+        if (savedModelName != null && _selectedModel.value == null) { // Only load if not already set by loaded check
+            viewModelScope.launch {
+                // Wait for available models to populate
+                kotlinx.coroutines.delay(100) 
+                val model = _availableModels.value.find { it.name == savedModelName }
+                if (model != null) {
+                    _selectedModel.value = model
+                    if (!model.supportsGpu && _selectedBackend.value == LlmInference.Backend.GPU) {
+                        _selectedBackend.value = LlmInference.Backend.CPU
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveSettings() {
+        prefs.edit().apply {
+            putString("selected_model_name", _selectedModel.value?.name)
+            putString("selected_backend", _selectedBackend.value?.name)
+            apply()
+        }
+    }
+
+    private fun loadAvailableModels() {
+        viewModelScope.launch {
+            val available = ModelAvailabilityProvider.loadAvailableModels(context)
+                .filter { it.category != "embedding" && !it.name.contains("Projector", ignoreCase = true) }
+            _availableModels.value = available
+            
+            // If no model selected yet and not loaded, pick first
+            if (_selectedModel.value == null && !_isModelLoaded.value) {
+                available.firstOrNull()?.let {
+                    _selectedModel.value = it
+                    _selectedBackend.value = if (it.supportsGpu) {
+                        _selectedBackend.value ?: LlmInference.Backend.GPU
+                    } else {
+                        LlmInference.Backend.CPU
+                    }
+                }
+            }
+        }
+    }
+
+    fun selectModel(model: LLMModel) {
+        if (_isModelLoaded.value && _selectedModel.value != model) {
+            unloadModel()
+        }
+        
+        _selectedModel.value = model
+        _isModelLoaded.value = false // Require reload if model changed
+        
+        _selectedBackend.value = if (model.supportsGpu) {
+            _selectedBackend.value ?: LlmInference.Backend.GPU
+        } else {
+            LlmInference.Backend.CPU
+        }
+        
+        saveSettings()
+    }
+
+    fun selectBackend(backend: LlmInference.Backend) {
+        if (_isModelLoaded.value && _selectedBackend.value != backend) {
+            unloadModel()
+        }
+        
+        _selectedBackend.value = backend
+        _isModelLoaded.value = false
+        saveSettings()
+    }
+
+    fun loadModel() {
+        val model = _selectedModel.value ?: return
+        val backend = _selectedBackend.value ?: return
+        
+        if (_isLoading.value || _isModelLoaded.value) {
+            return
+        }
+        
+        viewModelScope.launch {
+            _isLoading.value = true
+            _error.value = null
+            
+            try {
+                // Unload current if any
+                inferenceService.unloadModel()
+                
+                // Load model 
+                // Using standard settings, enabling generic vision/audio if supported by model, though not strictly used for generation here yet
+                val success = inferenceService.loadModel(
+                    model = model,
+                    preferredBackend = backend,
+                    disableVision = !model.supportsVision,
+                    disableAudio = !model.supportsAudio
+                )
+                
+                if (success) {
+                    _isModelLoaded.value = true
+                } else {
+                    _error.value = "Failed to load model"
+                }
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Unknown error loading model"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun unloadModel() {
+        viewModelScope.launch {
+            try {
+                inferenceService.unloadModel()
+                _isModelLoaded.value = false
+            } catch (e: Exception) {
+                _error.value = e.message ?: "Failed to unload model"
+            }
+        }
+    }
+
     fun generateCreator(userPrompt: String) {
         viewModelScope.launch {
             _isGenerating.value = true
@@ -34,9 +197,20 @@ class CreatorViewModel(
             _generatedCreator.value = null
 
             try {
+                // Ensure model is loaded
+                if (!_isModelLoaded.value) {
+                     _error.value = "Please load a model first."
+                    _isGenerating.value = false
+                    return@launch
+                }
+                
+                // Double check service state just in case
                 val model = inferenceService.getCurrentlyLoadedModel()
                 if (model == null) {
-                    _error.value = "No model loaded. Please load a model in Chat first."
+                     // Try to reload implicitly if we think we are loaded but service isn't
+                     // Or just fail. Let's fail to be safe and update state.
+                     _isModelLoaded.value = false
+                    _error.value = "Model not loaded in service. Please load again."
                     _isGenerating.value = false
                     return@launch
                 }

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.llmhub.llmhub.viewmodels.ChatViewModelFactory
 import com.llmhub.llmhub.viewmodels.CreatorViewModel
+import com.llmhub.llmhub.components.ModelSelectorCard
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -34,6 +35,13 @@ fun CreatorGenerationScreen(
     val isGenerating by viewModel.isGenerating.collectAsState()
     val generatedCreator by viewModel.generatedCreator.collectAsState()
     val error by viewModel.error.collectAsState()
+    
+    // Model States
+    val availableModels by viewModel.availableModels.collectAsState()
+    val selectedModel by viewModel.selectedModel.collectAsState()
+    val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val isModelLoaded by viewModel.isModelLoaded.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
     
     var userPrompt by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -67,7 +75,7 @@ fun CreatorGenerationScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 24.dp),
+                    .padding(bottom = 16.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -88,6 +96,20 @@ fun CreatorGenerationScreen(
                 }
             }
 
+            // Model Selector
+            ModelSelectorCard(
+                models = availableModels,
+                selectedModel = selectedModel,
+                onModelSelected = { viewModel.selectModel(it) },
+                selectedBackend = selectedBackend,
+                onBackendSelected = { viewModel.selectBackend(it) },
+                onLoadModel = { viewModel.loadModel() },
+                isLoading = isLoading,
+                isModelLoaded = isModelLoaded,
+                onUnloadModel = { viewModel.unloadModel() },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            )
+
             // Input Area
             OutlinedTextField(
                 value = userPrompt,
@@ -101,7 +123,8 @@ fun CreatorGenerationScreen(
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                )
+                ),
+                enabled = !isGenerating // Disable input while generating
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -109,7 +132,7 @@ fun CreatorGenerationScreen(
             // Generate Button
             Button(
                 onClick = { viewModel.generateCreator(userPrompt) },
-                enabled = userPrompt.isNotBlank() && !isGenerating,
+                enabled = userPrompt.isNotBlank() && !isGenerating && isModelLoaded,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary
@@ -130,6 +153,15 @@ fun CreatorGenerationScreen(
                     Text("Generate Persona")
                 }
             }
+            
+            if (!isModelLoaded && userPrompt.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Please load a model first.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
 
             // Error Display
             if (error != null) {
@@ -146,7 +178,6 @@ fun CreatorGenerationScreen(
                     )
                 }
             }
-
             // Result Display
             if (generatedCreator != null) {
                 Spacer(modifier = Modifier.height(24.dp))
