@@ -23,8 +23,14 @@ import com.llmhub.llmhub.viewmodels.ChatViewModelFactory
 import com.llmhub.llmhub.viewmodels.CreatorViewModel
 import com.llmhub.llmhub.components.ModelSelectorCard
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalView
+import android.graphics.Rect
+import android.view.ViewTreeObserver
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun CreatorGenerationScreen(
     onNavigateBack: () -> Unit,
@@ -47,6 +53,32 @@ fun CreatorGenerationScreen(
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
+    // Keyboard handling
+    val promptBringRequester = remember { BringIntoViewRequester() }
+    var promptFocused by remember { mutableStateOf(false) }
+    
+    // Detect keyboard (IME) visibility
+    val view = LocalView.current
+    val imeVisible = remember { mutableStateOf(false) }
+    DisposableEffect(view) {
+        val listener = ViewTreeObserver.OnGlobalLayoutListener {
+            val r = Rect()
+            view.getWindowVisibleDisplayFrame(r)
+            val screenHeight = view.rootView.height
+            val keypadHeight = screenHeight - r.bottom
+            val visible = keypadHeight > screenHeight * 0.15
+            if (imeVisible.value != visible) imeVisible.value = visible
+        }
+        view.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+    }
+
+    LaunchedEffect(imeVisible.value) {
+        if (imeVisible.value && promptFocused) {
+            promptBringRequester.bringIntoView()
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -55,6 +87,13 @@ fun CreatorGenerationScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    Text(
+                        text = "v1.0",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(end = 16.dp)
+                    )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
@@ -67,6 +106,7 @@ fun CreatorGenerationScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .imePadding() // Fix for keyboard overlay
                 .padding(16.dp)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -116,7 +156,9 @@ fun CreatorGenerationScreen(
                 onValueChange = { userPrompt = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp),
+                    .height(150.dp)
+                    .bringIntoViewRequester(promptBringRequester)
+                    .onFocusChanged { promptFocused = it.isFocused },
                 label = { Text("Describe your creAItor...") },
                 placeholder = { Text("e.g., A grumpy cat that hates Mondays but loves lasagna. Is very sarcastic.") },
                 shape = RoundedCornerShape(12.dp),
@@ -178,6 +220,7 @@ fun CreatorGenerationScreen(
                     )
                 }
             }
+
             // Result Display
             if (generatedCreator != null) {
                 Spacer(modifier = Modifier.height(24.dp))
@@ -243,13 +286,6 @@ fun CreatorGenerationScreen(
                             onClick = {
                                 viewModel.saveCreator(generatedCreator!!) {
                                     // Navigate to a new chat with this creator
-                                    // We need to create the chat first, or handle it in navigation
-                                    // For now, let's just go back to home or drawer? 
-                                    // Ideally, we start chatting immediately.
-                                    // The callback logic handles the DB insert.
-                                    // Implementation Plan says: "On click: triggers navigation to a new Chat with `creatorId`"
-                                    // But we need the creator ID to persist first.
-                                    // CreatorEntity generates ID on init.
                                     onNavigateToChat(generatedCreator!!.id)
                                 }
                             },
