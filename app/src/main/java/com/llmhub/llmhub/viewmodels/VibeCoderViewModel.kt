@@ -542,6 +542,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - NO BLOCKING LOOPS: Never use 'while' or 'for' loops to manage turns or wait for user input (e.g., `while(guesses < 7)`). This freezes the browser.
             - NO ALERTS: Do not use `alert()` or `prompt()`. Use HTML elements for output and input.
             - NO EXTERNAL RESOURCES: No external images, CSS, or JS files.
+            - TYPE SAFETY: Never compare `input.value` directly to a number. ALWAYS use `parseInt()` or `Number()` first.
+            - UI INTEGRITY: Do not overwrite elements that contain labels (e.g., `<div id="score">Score: 0</div>` -> `document.getElementById("score").textContent = 5`). This destroys the label. Use a child `<span>` for the value or include the label in the update.
             
             REQUIREMENTS FOR APPS/GAMES (HTML/JS):
             - Create a complete, standalone Single Page Application (SPA).
