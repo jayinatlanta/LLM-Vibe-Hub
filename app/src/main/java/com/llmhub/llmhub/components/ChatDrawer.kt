@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -39,8 +40,11 @@ fun ChatDrawer(
     val chats by viewModel.allChats.collectAsState()
     val creators by viewModel.allCreators.collectAsState()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
+    
+    // ... dialog logic ...
 
-    // ... (rest of the setup)
+    ModalDrawerSheet {
+        Column(modifier = Modifier.padding(16.dp)) {
 
             // New Chat Button
             FilledTonalButton(
