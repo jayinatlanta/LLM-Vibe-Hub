@@ -115,6 +115,13 @@ fun HomeScreen(
                 icon = Icons.Filled.Code,
                 gradient = Pair(Color(0xFFf794a4), Color(0xFFfdd6bd)),
                 route = "vibe_coder"
+            ),
+            FeatureCard(
+                title = "feature_creator_generation",
+                description = "feature_creator_generation_desc",
+                icon = Icons.Filled.AutoAwesome,
+                gradient = Pair(Color(0xFF8EC5FC), Color(0xFFE0C3FC)),
+                route = "creator_generation"
             )
         )
     }

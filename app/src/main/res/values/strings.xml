@@ -449,6 +449,9 @@
     <string name="feature_image_generator_desc">Generate images from text prompts with AI</string>
     <string name="feature_vibe_coder">Vibe Coder</string>
     <string name="feature_vibe_coder_desc">Generate HTML, JavaScript, and Python code with AI</string>
+    <string name="feature_creator_generation">creAItors</string>
+    <string name="feature_creator_generation_desc">Create your own custom AI personas</string>
+    <string name="drawer_my_creators">my creAItors</string>
     
     <!-- Vibe Coder Screen -->
     <string name="vibe_coder_title">Vibe Coder</string>

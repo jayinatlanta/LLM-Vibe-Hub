@@ -74,6 +74,7 @@ fun getLocalizedModelName(model: LLMModel): String {
 @Composable
 fun ChatScreen(
     chatId: String,
+    creatorId: String? = null,
     viewModelFactory: ChatViewModelFactory,
     onNavigateToSettings: () -> Unit,
     onNavigateToModels: () -> Unit,
@@ -136,7 +137,7 @@ fun ChatScreen(
 
     // Initialize chat - only run once per chatId or when context changes
     LaunchedEffect(chatId) {
-        viewModel.initializeChat(chatId, context)
+        viewModel.initializeChat(chatId, context, creatorId)
     }
     
     // Sync model state immediately to show icons
