@@ -440,6 +440,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - ALWAYS include a "Reset" or "New" button to restart the application state.
             - Explicitly display game state (Score, Win/Loss messages, etc.) in the UI text.
             - Ensure all interactive elements (buttons, inputs) are clearly visible and accessible.
+            - FUNCTIONAL UI: Ensure ALL UI elements (including SVGs, Canvas) are functional and wired to the script. Do NOT add decorative elements that do nothing.
+            - HISTORY/CONTEXT: For interactive games, display a "History Log" or list of previous moves/actions so the user can track progress, and summarize the results when the game is won or lost.
             
             REQUIREMENTS FOR UTILITY APPS (Calculators, Converters, Tools):
             - Use clear, labeled forms with appropriate input types (number, text, etc.).

@@ -123,7 +123,7 @@ fun VibeCoderScreen(
                 },
                 actions = {
                     Text(
-                        text = "v0.3",
+                        text = "v0.4",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(end = 8.dp)
                     )
