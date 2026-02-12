@@ -295,21 +295,22 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun detectAndExtractCode(response: String) {
         // Try to extract from markdown code blocks with language hints (```html, ```python, etc.)
-        val htmlMatch = Regex("```(?:html|htm)\\s*\\n([\\s\\S]*?)```").find(response)
+        // Relaxed regex to allow immediate content after language tag (no newline required)
+        val htmlMatch = Regex("```(?:html|htm)\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(response)
         if (htmlMatch != null) {
             _generatedCode.value = htmlMatch.groupValues[1].trim()
             _codeLanguage.value = CodeLanguage.HTML
             return
         }
         
-        val pythonMatch = Regex("```(?:python|py)\\s*\\n([\\s\\S]*?)```").find(response)
+        val pythonMatch = Regex("```(?:python|py)\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(response)
         if (pythonMatch != null) {
             _generatedCode.value = pythonMatch.groupValues[1].trim()
             _codeLanguage.value = CodeLanguage.PYTHON
             return
         }
         
-        val jsMatch = Regex("```(?:javascript|js)\\s*\\n([\\s\\S]*?)```").find(response)
+        val jsMatch = Regex("```(?:javascript|js)\\s*([\\s\\S]*?)```", RegexOption.IGNORE_CASE).find(response)
         if (jsMatch != null) {
             _generatedCode.value = jsMatch.groupValues[1].trim()
             _codeLanguage.value = CodeLanguage.JAVASCRIPT
@@ -317,8 +318,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         }
         
         // Fallback: Extract any content between ``` markers (handles malformed responses)
-        // Allow optional newline after opening ``` and before closing ```
-        val genericMatch = Regex("```\\s*\\n?([\\s\\S]*?)```").find(response)
+        val genericMatch = Regex("```\\s*([\\s\\S]*?)```").find(response)
         if (genericMatch != null) {
             val extracted = genericMatch.groupValues[1].trim()
             _generatedCode.value = extracted

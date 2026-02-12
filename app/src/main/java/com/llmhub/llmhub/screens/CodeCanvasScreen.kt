@@ -100,6 +100,9 @@ fun CodeCanvasScreen(
                             cacheMode = WebSettings.LOAD_NO_CACHE
                             defaultTextEncodingName = "utf-8"
                         }
+
+                        // Add WebChromeClient for alert() and console support
+                        webChromeClient = android.webkit.WebChromeClient()
                         
                         webViewClient = object : WebViewClient() {
                             override fun onReceivedError(
@@ -147,13 +150,13 @@ private fun sanitizeHtml(htmlContent: String): String {
     
     // Preserve inline <script> content but strip external script src to avoid network loads
     // Remove src attributes from script tags (disallow external scripts)
-    sanitized = sanitized.replace(Regex("(<script\\b[^>]*?)\\s+src\\s*=\\s*(['\"]).*?\\2", RegexOption.IGNORE_CASE), "$1")
+    // relaxed for Vibe Coder: sanitized = sanitized.replace(Regex("(<script\\b[^>]*?)\\s+src\\s*=\\s*(['\"]).*?\\2", RegexOption.IGNORE_CASE), "$1")
 
     // Remove most on* event handlers but preserve `onclick` so generated UIs still respond to clicks.
-    sanitized = sanitized.replace(Regex("""on(?!click)\\w+\s*=""", RegexOption.IGNORE_CASE), "")
+    // relaxed for Vibe Coder: sanitized = sanitized.replace(Regex("""on(?!click)\\w+\s*=""", RegexOption.IGNORE_CASE), "")
 
     // Remove javascript: protocol occurrences
-    sanitized = sanitized.replace(Regex("""javascript:\s*""", RegexOption.IGNORE_CASE), "")
+    // relaxed for Vibe Coder: sanitized = sanitized.replace(Regex("""javascript:\s*""", RegexOption.IGNORE_CASE), "")
 
     // If the generated script references common IDs but doesn't define element variables,
     // inject a small initializer to bind them to DOM elements. This helps fix common LLM mistakes

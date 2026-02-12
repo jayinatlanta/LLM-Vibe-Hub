@@ -123,7 +123,7 @@ fun VibeCoderScreen(
                 },
                 actions = {
                     Text(
-                        text = "v0.2",
+                        text = "v0.3",
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(end = 8.dp)
                     )
@@ -139,6 +139,7 @@ fun VibeCoderScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding() // specific fix for keyboard overlay
                 .verticalScroll(scrollState)
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
