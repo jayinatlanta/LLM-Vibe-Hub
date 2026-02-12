@@ -579,7 +579,6 @@ fun ChatScreen(
                 }
             }
         }
-        }
     }
     
     // Settings Bottom Sheet for model selection and configuration
