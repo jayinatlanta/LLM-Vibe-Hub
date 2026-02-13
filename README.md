@@ -18,15 +18,21 @@
 
 ## 🚀 Features
 
-### 🛠️ Six AI Tools
+### 🛠️ AI Tools Suite
 | Tool | Description |
 |------|-------------|
-| **💬 Chat** | Multi-turn conversations with RAG memory, web search, TTS auto-readout, and multimodal input (text, images, audio) |
+| **💬 Chat** | Multi-turn conversations with RAG memory, web search, TTS auto-readout, and multimodal input |
+| **🤖 creAItor** | **[NEW]** Design custom AI personas with specialized system prompts (PCTF) in seconds |
+| **💻 Vibe Coder** | **[NEW]** Explain your app idea and watch it be built in real-time with live HTML/JS preview |
 | **✍️ Writing Aid** | Summarize, expand, rewrite, improve grammar, or generate code from descriptions |
-| **🎨 Image Generator** | Create images from text prompts using Stable Diffusion 1.5 with swipeable gallery for variations |
-| **🌍 Translator** | Translate text, images (OCR), and audio across 50+ languages - works offline |
+| **🎨 Image Generator** | Create images from text prompts using Stable Diffusion 1.5 with swipeable gallery |
+| **🌍 Translator** | Translate text, images (OCR), and audio across 50+ languages - offline |
 | **🎙️ Transcriber** | Convert speech to text with on-device processing |
 | **🛡️ Scam Detector** | Analyze messages and images for phishing with risk assessment |
+
+### ✨ Vibes & Creators (New in v1.2)
+- **creAItor**: Instant persona generation. Just describe a character ("A grumpy cat that loves lasagna"), and the on-device LLM generates a complex system prompt (PCTF format) to bring them to life.
+- **Vibe Coder**: A full on-device coding environment. The LLM writes HTML/JS/CSS based on your requirements, and you can preview/run the app instantly in a secure sandbox.
 
 ### 🔐 Privacy First
 - **100% on-device processing** - no internet required for inference
