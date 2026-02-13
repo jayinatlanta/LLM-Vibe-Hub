@@ -283,8 +283,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 if (!isRevision) {
                     _isPlanning.value = true
                     try {
-                        // Timeout for planning phase (30 seconds)
-                        kotlinx.coroutines.withTimeout(30_000L) {
+                        // Timeout for planning phase (90 seconds)
+                        kotlinx.coroutines.withTimeout(90_000L) {
                             val specPrompt = buildSpecPrompt(prompt, "")
                             val specChatId = "vibe-spec-${UUID.randomUUID()}"
                             
@@ -351,9 +351,28 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 )
                 
                 var responseText = ""
-                responseFlow.collect { token ->
-                    responseText += token
-                    _generatedCode.value = responseText
+                try {
+                    responseFlow.collect { token ->
+                        responseText += token
+                        _generatedCode.value = responseText
+
+                        // Early stopping: Check if we have two distinct sets of triple backticks
+                        val firstTick = responseText.indexOf("```")
+                        if (firstTick != -1) {
+                            val lastTick = responseText.lastIndexOf("```")
+                            if (lastTick > firstTick) {
+                                // Found a closing code block, stop generating
+                                throw kotlinx.coroutines.CancellationException("Code block complete")
+                            }
+                        }
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    if (e.message == "Code block complete") {
+                        Log.d("VibeCoderVM", "Early stop: Code block complete")
+                        // Fall through to extraction
+                    } else {
+                        throw e
+                    }
                 }
                 
                 // Detect code language and extract code from response
