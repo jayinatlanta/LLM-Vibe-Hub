@@ -79,6 +79,12 @@ fun CreatorGenerationScreen(
         }
     }
 
+    LaunchedEffect(generatedCreator) {
+        if (generatedCreator != null) {
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -130,7 +136,7 @@ fun CreatorGenerationScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Describe the persona you want to create. Be creative! The AI will generate a specialized system prompt for you.",
+                        text = "You have the power to bring a custom AI creAItor to life. Just describe how your creAItor will respond to any input, request, or idea. Once we generate your creAItor, you'll be able to use it in chat.",
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -160,7 +166,7 @@ fun CreatorGenerationScreen(
                     .bringIntoViewRequester(promptBringRequester)
                     .onFocusChanged { promptFocused = it.isFocused },
                 label = { Text("Describe your creAItor...") },
-                placeholder = { Text("e.g., A grumpy cat that hates Mondays but loves lasagna. Is very sarcastic.") },
+                placeholder = { Text("e.g., summarize any topic as a rhyming poem of less than 10 lines") },
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -291,8 +297,8 @@ fun CreatorGenerationScreen(
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
                             )
                         ) {
                             Icon(Icons.Default.Save, contentDescription = null)
