@@ -73,6 +73,10 @@ class UnifiedInferenceService(private val context: Context) : InferenceService {
             }
         }
 
+        if (!success) {
+            throw AllBackendsFailedException("Failed to load model with primary and fallback backends")
+        }
+
         return success
     }
 
@@ -129,6 +133,10 @@ class UnifiedInferenceService(private val context: Context) : InferenceService {
                  android.util.Log.e("UnifiedInferenceService", "Fallback to MediaPipe failed", eFallback)
                  success = false
             }
+        }
+
+        if (!success) {
+            throw AllBackendsFailedException("Failed to load model with primary and fallback backends")
         }
 
         return success

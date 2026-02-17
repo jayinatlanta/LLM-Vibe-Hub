@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.SavedStateHandle
 import com.llmhub.llmhub.data.*
 import com.llmhub.llmhub.inference.InferenceService
+import com.llmhub.llmhub.inference.AllBackendsFailedException
 import com.llmhub.llmhub.repository.ChatRepository
 import com.llmhub.llmhub.utils.FileUtils
 import com.llmhub.llmhub.R
@@ -727,16 +728,51 @@ class ChatViewModel(
 
             // Verify we have a working model
             if (currentModel == null || !currentModel!!.isDownloaded) {
-                Log.e("ChatViewModel", "No valid model available for chat $chatId. CurrentModel: ${currentModel?.name}, isDownloaded: ${currentModel?.isDownloaded}, availableModels: ${_availableModels.value.size}")
-                val errorMessage = if (_availableModels.value.isEmpty()) {
-                    context.getString(R.string.please_download_model)
-                } else {
-                    context.getString(R.string.model_not_loaded)
+                 // ... existing error checking ...
+            }
+            
+            // Try to ensure the model is loaded before checking attachments/sending
+            try {
+               val modelToLoad = currentModel!!
+                // We rely on the unified service to handle backend selection/fallback internally,
+                // but we wrap this in case it throws AllBackendsFailedException
+               if (inferenceService.getCurrentlyLoadedModel()?.name != modelToLoad.name) {
+                   inferenceService.loadModel(modelToLoad, selectedBackend.value, selectedNpuDeviceId.value)
+               }
+            } catch (e: AllBackendsFailedException) {
+                Log.e("ChatViewModel", "All backends failed for model: ${currentModel?.name}")
+                
+                // Check if an ONNX version exists
+                val failedModelName = currentModel?.name ?: ""
+                // Simple heuristic: look for a model with a similar name but "ONNX" in it
+                // e.g., "LFM-2.5 1.2B Instruct (Q4_0)" -> look for "LFM-2.5" and "ONNX"
+                val baseName = failedModelName.substringBefore("(").trim()
+                val onnxAlternative = _availableModels.value.find { 
+                    it.modelFormat == "onnx" && it.name.contains(baseName, ignoreCase = true) 
+                } ?: ModelData.models.find { 
+                     it.modelFormat == "onnx" && it.name.contains(baseName, ignoreCase = true) 
                 }
-                repository.addMessage(chatId, errorMessage, isFromUser = false)
+
+                val errorMessage = StringBuilder()
+                errorMessage.append("❌ **Backend Failure**\n\n")
+                errorMessage.append("The current model (${currentModel?.name}) could not be loaded by any supported backend (Nexa or MediaPipe).\n\n")
+                
+                if (onnxAlternative != null) {
+                    errorMessage.append("💡 **Recommendation:**\n")
+                    errorMessage.append("We found an **ONNX** version of this model: **${onnxAlternative.name}**.\n")
+                    errorMessage.append("ONNX is fully supported on your Pixel Fold's Tensor chip. Please switch to this model (you may need to download it first).")
+                } else {
+                    errorMessage.append("💡 **Recommendation:**\n")
+                    errorMessage.append("Try using a different model format (like .task or .onnx) which might be more compatible with your device.")
+                }
+
+                repository.addMessage(chatId, errorMessage.toString(), isFromUser = false)
                 _isLoading.value = false
                 isGenerating = false
                 return@launch
+            } catch (e: Exception) {
+                 Log.e("ChatViewModel", "Unexpected error loading model", e)
+                 // Continue and let the standard process fail nicely if needed
             }
 
             // Process attachment if present
