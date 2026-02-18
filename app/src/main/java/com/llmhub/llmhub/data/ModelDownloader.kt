@@ -164,7 +164,9 @@ class ModelDownloader(
                     if (location == null) {
                         throw RuntimeException("HTTP $responseCode received but no Location header found")
                     }
-                    currentUrl = location
+                    // Handle relative redirects by resolving against current URL
+                    val prevUrl = URL(currentUrl)
+                    currentUrl = URL(prevUrl, location).toString()
                     redirectCount++
                     Log.d(TAG, "Redirect: $responseCode to $location")
                 }
