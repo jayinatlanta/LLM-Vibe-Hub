@@ -754,19 +754,31 @@ class ModelDownloadViewModel(application: Application) : AndroidViewModel(applic
         val modelsDir = File(context.filesDir, "models")
         if (modelsDir.exists() && modelsDir.isDirectory) {
             try {
-                // Primary expected filename
-                val primary = File(modelsDir, model.localFileName())
-                if (primary.exists()) primary.delete()
+                // Determine if this is a directory-based model (ONNX or GGUF multi-file)
+                if ((model.modelFormat == "onnx" || model.modelFormat == "gguf") && model.additionalFiles.isNotEmpty()) {
+                    val modelDirName = model.name.replace(" ", "_").replace(Regex("[^a-zA-Z0-9_.-]"), "")
+                    val modelDir = File(modelsDir, modelDirName)
+                    if (modelDir.exists() && modelDir.isDirectory) {
+                        modelDir.deleteRecursively()
+                        android.util.Log.i("ModelDownloadViewModel", "Deleted multi-file model directory: ${modelDir.absolutePath}")
+                    }
+                } else {
+                    // Standard single-file deletion logic
+                    
+                    // Primary expected filename
+                    val primary = File(modelsDir, model.localFileName())
+                    if (primary.exists()) primary.delete()
 
-                // Legacy .gguf name
-                val legacy = File(modelsDir, "${model.name.replace(" ", "_")}.gguf")
-                if (legacy.exists()) legacy.delete()
+                    // Legacy .gguf name
+                    val legacy = File(modelsDir, "${model.name.replace(" ", "_")}.gguf")
+                    if (legacy.exists()) legacy.delete()
 
-                // Also remove any files that start with the URL-derived base name (handles .part, .tmp, etc.)
-                val base = model.localFileName().substringBeforeLast('.')
-                modelsDir.listFiles()?.forEach { f ->
-                    if (f.name.startsWith(base) && f.name != model.localFileName()) {
-                        try { f.delete() } catch (_: Exception) { }
+                    // Also remove any files that start with the URL-derived base name (handles .part, .tmp, etc.)
+                    val base = model.localFileName().substringBeforeLast('.')
+                    modelsDir.listFiles()?.forEach { f ->
+                        if (f.name.startsWith(base) && f.name != model.localFileName()) {
+                            try { f.delete() } catch (_: Exception) { }
+                        }
                     }
                 }
             } catch (e: Exception) {
