@@ -87,9 +87,9 @@ fun VibeCoderScreen(
     val codeLanguage by viewModel.codeLanguage.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     
-    // Scroll state for auto-scrolling
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
+    val codeScrollState = rememberScrollState()
     
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
@@ -104,6 +104,7 @@ fun VibeCoderScreen(
         if (generatedCode.isNotEmpty() && isProcessing) {
             coroutineScope.launch {
                 scrollState.animateScrollTo(scrollState.maxValue)
+                codeScrollState.animateScrollTo(codeScrollState.maxValue)
             }
         }
     }
@@ -338,7 +339,7 @@ fun VibeCoderScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(12.dp)
-                                        .verticalScroll(rememberScrollState()),
+                                        .verticalScroll(codeScrollState),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
