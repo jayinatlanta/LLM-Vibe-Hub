@@ -158,8 +158,9 @@ class OnnxInferenceService @Inject constructor(
     private fun ensureInputsEmbedsType(env: OrtEnvironment, session: OrtSession, embeds: OnnxTensor): OnnxTensor {
         val expected = (session.inputInfo["inputs_embeds"]?.info as? ai.onnxruntime.TensorInfo)?.type
         if (expected == OnnxJavaType.FLOAT16 && embeds.info.type != OnnxJavaType.FLOAT16) {
-            val rawByteBuffer = embeds.byteBuffer 
-                ?: throw Exception("Failed to get direct byte buffer for embeds")
+            val getBufferMethod = embeds.javaClass.getDeclaredMethod("getBuffer")
+            getBufferMethod.isAccessible = true
+            val rawByteBuffer = getBufferMethod.invoke(embeds) as ByteBuffer
             val fb = rawByteBuffer.order(ByteOrder.nativeOrder()).asFloatBuffer()
             val floats = FloatArray(fb.remaining())
             fb.get(floats)
@@ -623,11 +624,13 @@ class OnnxInferenceService @Inject constructor(
                     val logitsEntry = outputIterator.next()
                     val logitsTensor = logitsEntry.value as OnnxTensor
                     
-                    // CRITICAL: Avoid grabbing logitsTensor.floatBuffer directly, as it allocates 
-                    // a JVM heap array equal to the ENTIRE tensor size (can be 500MB+ for long context).
-                    // Instead, map the native memory as a DirectByteBuffer zero-copy, then read.
-                    val rawByteBuffer = logitsTensor.byteBuffer
-                        ?: throw Exception("Failed to get direct byte buffer for logits")
+                    // CRITICAL: Avoid grabbing logitsTensor.floatBuffer directly or getByteBuffer() which 
+                    // allocates a JVM heap array equal to the ENTIRE tensor size (can be 500MB+ for logic ctx).
+                    // We use reflection to call the private `getBuffer()` method on OnnxTensor, 
+                    // which returns a mapped DirectByteBuffer zero-copy.
+                    val getBufferMethod = logitsTensor.javaClass.getDeclaredMethod("getBuffer")
+                    getBufferMethod.isAccessible = true
+                    val rawByteBuffer = getBufferMethod.invoke(logitsTensor) as ByteBuffer
                     val logits = rawByteBuffer.order(ByteOrder.nativeOrder()).asFloatBuffer()
                     
                     // Sample next token from last position  
