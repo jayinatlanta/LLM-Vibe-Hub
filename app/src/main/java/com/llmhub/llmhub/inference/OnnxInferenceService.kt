@@ -158,7 +158,9 @@ class OnnxInferenceService @Inject constructor(
     private fun ensureInputsEmbedsType(env: OrtEnvironment, session: OrtSession, embeds: OnnxTensor): OnnxTensor {
         val expected = (session.inputInfo["inputs_embeds"]?.info as? ai.onnxruntime.TensorInfo)?.type
         if (expected == OnnxJavaType.FLOAT16 && embeds.info.type != OnnxJavaType.FLOAT16) {
-            val fb = embeds.floatBuffer
+            val rawByteBuffer = embeds.byteBuffer 
+                ?: throw Exception("Failed to get direct byte buffer for embeds")
+            val fb = rawByteBuffer.order(ByteOrder.nativeOrder()).asFloatBuffer()
             val floats = FloatArray(fb.remaining())
             fb.get(floats)
             val shape = embeds.info.shape
@@ -620,7 +622,13 @@ class OnnxInferenceService @Inject constructor(
                     if (!outputIterator.hasNext()) throw Exception("No outputs from model")
                     val logitsEntry = outputIterator.next()
                     val logitsTensor = logitsEntry.value as OnnxTensor
-                    val logits = logitsTensor.floatBuffer
+                    
+                    // CRITICAL: Avoid grabbing logitsTensor.floatBuffer directly, as it allocates 
+                    // a JVM heap array equal to the ENTIRE tensor size (can be 500MB+ for long context).
+                    // Instead, map the native memory as a DirectByteBuffer zero-copy, then read.
+                    val rawByteBuffer = logitsTensor.byteBuffer
+                        ?: throw Exception("Failed to get direct byte buffer for logits")
+                    val logits = rawByteBuffer.order(ByteOrder.nativeOrder()).asFloatBuffer()
                     
                     // Sample next token from last position  
                     val vocabSize = logits.remaining() / ids.size
