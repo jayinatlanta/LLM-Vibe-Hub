@@ -321,7 +321,11 @@ fun VibeCoderScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = if (isPlanning) "Planning architecture..." else stringResource(R.string.vibe_coder_generating),
+                                text = when {
+                                    isPlanning -> "Planning architecture..."
+                                    promptText.isNotEmpty() && !promptText.equals("new", ignoreCase = true) -> "Revising code..."
+                                    else -> stringResource(R.string.vibe_coder_generating)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

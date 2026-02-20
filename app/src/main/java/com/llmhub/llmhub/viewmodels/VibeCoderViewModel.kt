@@ -271,6 +271,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 
                 if (!isRevision) {
                     _generatedCode.value = "" // Clear code only for new projects
+                } else {
+                    _generatedCode.value = "" // Clear the old code from the screen so user knows we are working
                 }
                 
                 var builtSpec = ""
