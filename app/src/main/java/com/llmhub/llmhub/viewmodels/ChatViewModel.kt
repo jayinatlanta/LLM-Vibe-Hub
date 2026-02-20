@@ -568,6 +568,13 @@ class ChatViewModel(
                     }
                 }
                 
+                // CRITICAL: Synchronize the selectedModel with the newly established currentModel
+                // so the ChatScreen accurately reflects the loaded/target model.
+                if (currentModel != null) {
+                    _selectedModel.value = currentModel
+                    saveChatSettings()
+                }
+                
                 messageCollectionJob = launch {
                     repository.getMessagesForChat(chatId).collectLatest { messageList ->
                         _messages.value = messageList

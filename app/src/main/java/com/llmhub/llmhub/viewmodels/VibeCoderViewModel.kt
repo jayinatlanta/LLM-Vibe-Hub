@@ -454,6 +454,16 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
         
+        // If no code block is found, assume the entire response is code if it loosely fits a pattern
+        val isLikelyCode = response.contains("<!DOCTYPE", ignoreCase = true) || 
+                           response.contains("<html", ignoreCase = true) || 
+                           response.contains("def ") || 
+                           response.contains("function ")
+        
+        if (isLikelyCode && !response.contains("```")) {
+            _generatedCode.value = response.trim()
+        }
+        
         // Try to extract from XML-like tags (fallback)
         val xmlHtmlMatch = Regex("<code[^>]*>([\\s\\S]*?)</code>", RegexOption.IGNORE_CASE).find(response)
         if (xmlHtmlMatch != null) {
