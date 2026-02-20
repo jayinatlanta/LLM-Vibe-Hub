@@ -247,7 +247,6 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         
         processingJob = viewModelScope.launch {
             _isProcessing.value = true
-            _generatedCode.value = ""
             _errorMessage.value = null
             
             // Determine if request is creative/game or utility/precise
@@ -261,13 +260,6 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             // - Games/Creative: 0.6 temperature for balanced creativity
             val temperature = if (isCreative) 0.6f else 0.2f
             
-            inferenceService.setGenerationParameters(
-                maxTokens = 8192,
-                topK = 40,
-                topP = 0.95f,
-                temperature = temperature
-            )
-            
             try {
                 // Step 1: Architect (Meta-Prompting) vs Direct Modification
                 // If we have existing code and the prompt implies a revision, we SKIP the architect
@@ -277,14 +269,26 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 val currentCode = _generatedCode.value
                 val isRevision = currentCode.isNotBlank() && !prompt.equals("new", ignoreCase = true)
                 
+                if (!isRevision) {
+                    _generatedCode.value = "" // Clear code only for new projects
+                }
+                
                 var builtSpec = ""
                 
                 // Only run Architect if this is a NEW project
                 if (!isRevision) {
                     _isPlanning.value = true
                     try {
+                        // Adjust parameters for Architect (shorter output needed)
+                        inferenceService.setGenerationParameters(
+                            maxTokens = 1024, // Architect only needs to write a short list
+                            topK = 40,
+                            topP = 0.95f,
+                            temperature = temperature
+                        )
+                        
                         // Timeout for planning phase (90 seconds)
-                        kotlinx.coroutines.withTimeout(90_000L) {
+                        val planResult = kotlinx.coroutines.withTimeoutOrNull(90_000L) {
                             val specPrompt = buildSpecPrompt(prompt, "")
                             val specChatId = "vibe-spec-${UUID.randomUUID()}"
                             
@@ -300,6 +304,11 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                             specResponseFlow.collect { token ->
                                 builtSpec += token
                             }
+                            true // Return true on successful completion
+                        }
+                        
+                        if (planResult == null) {
+                            Log.w("VibeCoderVM", "Planning phase timed out after 90s, using generated spec up to this point: $builtSpec")
                         }
                         
                         // DEBUG: Log the Architect's generated requirements
@@ -314,7 +323,10 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                         
                     } catch (e: Exception) {
-                         Log.w("VibeCoderVM", "Planning phase failed or timed out: ${e.message}. Falling back to direct generation.")
+                         if (e is kotlinx.coroutines.CancellationException) {
+                             throw e // Ensure genuine cancellations to the job are not swallowed
+                         }
+                         Log.w("VibeCoderVM", "Planning phase failed: ${e.message}. Falling back to direct generation.")
                          try {
                             inferenceService.resetChatSession("vibe-spec-cleanup")
                          } catch (resetEx: Exception) {
@@ -325,6 +337,14 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 
                 currentSpec = builtSpec
+                
+                // Configure parameters for the Coder phase (needs lots of output space for code)
+                inferenceService.setGenerationParameters(
+                    maxTokens = 8192,
+                    topK = 40,
+                    topP = 0.95f,
+                    temperature = temperature
+                )
                 
                 // Step 2: Coder (Implementation or Modification)
                 val implementationPrompt = if (isRevision) {
