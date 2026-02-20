@@ -170,6 +170,11 @@ class ModelDownloader(
                     redirectCount++
                     Log.d(TAG, "Redirect: $responseCode to $location")
                 }
+                responseCode == 416 -> {
+                    // Range not satisfiable means we already have the whole file. 
+                    // Let the caller handle this response code.
+                    return connection
+                }
                 else -> {
                     // Error
                     connection.disconnect()
