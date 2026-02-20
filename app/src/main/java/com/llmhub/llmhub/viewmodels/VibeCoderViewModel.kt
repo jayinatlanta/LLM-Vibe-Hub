@@ -44,6 +44,10 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedBackend = MutableStateFlow<LlmInference.Backend?>(null)
     val selectedBackend: StateFlow<LlmInference.Backend?> = _selectedBackend.asStateFlow()
     
+    // Optional selected NPU device id when user chooses NPU for GGUF
+    private val _selectedNpuDeviceId = MutableStateFlow<String?>(null)
+    val selectedNpuDeviceId: StateFlow<String?> = _selectedNpuDeviceId.asStateFlow()
+    
     // Loading states
     private val _isModelLoaded = MutableStateFlow(false)
     val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
@@ -89,6 +93,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             LlmInference.Backend.GPU
         }
         
+        _selectedNpuDeviceId.value = prefs.getString("selected_npu_device", null)
+        
         val savedModelName = prefs.getString("selected_model_name", null)
         if (savedModelName != null) {
             viewModelScope.launch {
@@ -111,6 +117,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         prefs.edit().apply {
             putString("selected_model_name", _selectedModel.value?.name)
             putString("selected_backend", _selectedBackend.value?.name)
+            putString("selected_npu_device", _selectedNpuDeviceId.value)
             apply()
         }
     }
@@ -160,12 +167,13 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * Select inference backend (GPU, CPU, etc.)
      */
-    fun selectBackend(backend: LlmInference.Backend) {
+    fun selectBackend(backend: LlmInference.Backend, deviceId: String? = null) {
         if (_isModelLoaded.value) {
             unloadModel()
         }
         
         _selectedBackend.value = backend
+        _selectedNpuDeviceId.value = deviceId
         _isModelLoaded.value = false
         saveSettings()
     }
@@ -193,7 +201,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                     model = model,
                     preferredBackend = backend,
                     disableVision = true,
-                    disableAudio = true
+                    disableAudio = true,
+                    deviceId = _selectedNpuDeviceId.value
                 )
                 
                 if (success) {

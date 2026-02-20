@@ -529,7 +529,7 @@ fun ChatScreen(
                 viewModel.setGenerationParameters(maxTokens, topK, topP, temperature)
                 
                 if (backend != null) {
-                    viewModel.switchModelWithBackend(model, backend, disableVision, disableAudio)
+                    viewModel.switchModelWithBackend(model, backend, disableVision, disableAudio, deviceId)
                 } else {
                     viewModel.switchModel(model)
                 }

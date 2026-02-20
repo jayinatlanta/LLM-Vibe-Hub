@@ -46,6 +46,7 @@ fun CreatorGenerationScreen(
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val selectedNpuDeviceId by viewModel.selectedNpuDeviceId.collectAsState()
     val isModelLoaded by viewModel.isModelLoaded.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     
@@ -142,13 +143,13 @@ fun CreatorGenerationScreen(
                 }
             }
 
-            // Model Selector
             ModelSelectorCard(
                 models = availableModels,
                 selectedModel = selectedModel,
                 onModelSelected = { viewModel.selectModel(it) },
                 selectedBackend = selectedBackend,
-                onBackendSelected = { backend, _ -> viewModel.selectBackend(backend) },
+                selectedNpuDeviceId = selectedNpuDeviceId,
+                onBackendSelected = { backend, deviceId -> viewModel.selectBackend(backend, deviceId) },
                 onLoadModel = { viewModel.loadModel() },
                 isLoading = isLoading,
                 isModelLoaded = isModelLoaded,

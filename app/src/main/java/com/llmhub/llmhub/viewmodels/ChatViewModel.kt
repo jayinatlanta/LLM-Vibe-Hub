@@ -2298,10 +2298,10 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
     
     fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean) {
         // Call the new overloaded method with disableAudio = false for backward compatibility
-        switchModelWithBackend(newModel, backend, disableVision, disableAudio = false)
+        switchModelWithBackend(newModel, backend, disableVision, disableAudio = false, deviceId = null)
     }
     
-    fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean, disableAudio: Boolean) {
+    fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean, disableAudio: Boolean, deviceId: String? = null) {
         viewModelScope.launch {
             // Store the modality disabled states
             isVisionDisabled = disableVision
@@ -2309,6 +2309,7 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
             // Immediately reflect the user's choice in UI
             _selectedModel.value = newModel
             _selectedBackend.value = backend
+            _selectedNpuDeviceId.value = deviceId
             
             // Persist settings
             saveChatSettings()

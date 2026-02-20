@@ -79,6 +79,7 @@ fun VibeCoderScreen(
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val selectedNpuDeviceId by viewModel.selectedNpuDeviceId.collectAsState()
     val isModelLoaded by viewModel.isModelLoaded.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
@@ -146,7 +147,6 @@ fun VibeCoderScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Model Selector
             ModelSelectorCard(
                 models = availableModels,
                 selectedModel = selectedModel,
@@ -154,8 +154,9 @@ fun VibeCoderScreen(
                     viewModel.selectModel(model)
                 },
                 selectedBackend = selectedBackend,
-                onBackendSelected = { backend, _ ->
-                    viewModel.selectBackend(backend)
+                selectedNpuDeviceId = selectedNpuDeviceId,
+                onBackendSelected = { backend, deviceId ->
+                    viewModel.selectBackend(backend, deviceId)
                 },
                 onLoadModel = {
                     viewModel.loadModel()
