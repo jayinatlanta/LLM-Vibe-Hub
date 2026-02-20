@@ -590,8 +590,10 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun buildImplementationPrompt(requirements: String): String {
         return """
-            You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
-            Your task is to generate clean, functional code based on the Requirements provided below. The code will run in an offline interpreter.
+            You are an expert developer who is adept at generating production-ready stand-alone apps and games.
+            **CRITICAL STACK RULE:** You MUST default to HTML/JS for ALL games and apps. HTML/JS is required because it runs natively in the user's view. Python cannot render UI or playable games in this environment, and should be a LAST RESORT used ONLY for pure math/charting tasks, backend/scripting tasks meant to be copied, or if the user explicitly asks for Python.
+
+            Your task is to generate clean, functional code based on the Requirements provided below.
             
             REQUIREMENTS:
             $requirements
@@ -651,6 +653,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         return """
             You are an expert developer. The user wants to MODIFY the existing code below.
             
+            **CRITICAL STACK RULE:** You MUST keep or default to HTML/JS if generating UI-based code. Python cannot render UI in this environment and is ONLY for math/charting, back-end scripts, or if explicitly requested.
+            
             EXISTING CODE:
             ```
             $currentCode
@@ -683,10 +687,12 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      */
     private fun buildPrompt(userPrompt: String): String {
         return """
-            You are an expert developer who is adept at generating production-ready stand-alone apps and games in either HTML or Python. 
-            Your task is to generate clean, functional code based on the current user request. The code will run in an offline interpreter.
+            You are an expert developer who is adept at generating production-ready stand-alone apps and games.
+            **CRITICAL STACK RULE:** You MUST default to HTML/JS for ALL games and apps. HTML/JS is required because it runs natively in the user's view. Python cannot render UI or playable games in this environment, and should be a LAST RESORT used ONLY for pure math/charting tasks, backend/scripting tasks meant to be copied, or if the user explicitly asks for Python.
 
-            User request: $userPrompt
+            Your task is to generate clean, functional code based on the current user request.
+
+            User request: ${"$"}userPrompt
 
             Think about how to meet the user's request for the best stand-alone functional code to delight the user, considering the constraints and requirements that follow.
 
