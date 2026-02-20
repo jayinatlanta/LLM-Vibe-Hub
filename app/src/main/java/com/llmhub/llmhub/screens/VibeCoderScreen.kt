@@ -351,39 +351,41 @@ fun VibeCoderScreen(
                             }
                             
                             // Action buttons for generated code
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Button(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedCode))
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(40.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors()
+                            if (!isProcessing) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.vibe_coder_copy), style = MaterialTheme.typography.labelSmall)
-                                }
-                                
-                                if (codeLanguage == CodeLanguage.HTML) {
                                     Button(
                                         onClick = {
-                                            onNavigateToCanvas?.invoke(generatedCode, "html")
+                                            clipboardManager.setText(AnnotatedString(generatedCode))
                                         },
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(40.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        )
+                                        colors = ButtonDefaults.outlinedButtonColors()
                                     ) {
-                                        Icon(Icons.Default.Preview, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(R.string.vibe_coder_preview), style = MaterialTheme.typography.labelSmall)
+                                        Text(stringResource(R.string.vibe_coder_copy), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    
+                                    if (codeLanguage == CodeLanguage.HTML) {
+                                        Button(
+                                            onClick = {
+                                                onNavigateToCanvas?.invoke(generatedCode, "html")
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(40.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.Preview, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(stringResource(R.string.vibe_coder_preview), style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             }
