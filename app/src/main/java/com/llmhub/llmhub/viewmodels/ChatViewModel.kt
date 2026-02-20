@@ -762,15 +762,21 @@ class ChatViewModel(
 
                 val errorMessage = StringBuilder()
                 errorMessage.append("❌ **Backend Failure**\n\n")
-                errorMessage.append("The current model (${currentModel?.name}) could not be loaded by any supported backend (Nexa or MediaPipe).\n\n")
                 
-                if (onnxAlternative != null) {
-                    errorMessage.append("💡 **Recommendation:**\n")
-                    errorMessage.append("We found an **ONNX** version of this model: **${onnxAlternative.name}**.\n")
-                    errorMessage.append("ONNX is fully supported on your Pixel Fold's Tensor chip. Please switch to this model (you may need to download it first).")
+                if (currentModel?.modelFormat == "onnx") {
+                    errorMessage.append("A final, sorry, no variant of this ONNX model could be successfully loaded. ONNX fallback has failed.\n\n")
+                    errorMessage.append("Logs indicte this is usually caused by unsupported operations for your device's specific hardware.")
                 } else {
-                    errorMessage.append("💡 **Recommendation:**\n")
-                    errorMessage.append("Try using a different model format (like .task or .onnx) which might be more compatible with your device.")
+                    errorMessage.append("The current model (${currentModel?.name}) could not be loaded by any supported backend (Nexa or MediaPipe).\n\n")
+                    
+                    if (onnxAlternative != null) {
+                        errorMessage.append("💡 **Recommendation:**\n")
+                        errorMessage.append("We found an **ONNX** version of this model: **${onnxAlternative.name}**.\n")
+                        errorMessage.append("ONNX is fully supported on your Pixel Fold's Tensor chip. Please switch to this model (you may need to download it first).")
+                    } else {
+                        errorMessage.append("💡 **Recommendation:**\n")
+                        errorMessage.append("Try using a different model format (like .task or .onnx) which might be more compatible with your device.")
+                    }
                 }
 
                 repository.addMessage(chatId, errorMessage.toString(), isFromUser = false)

@@ -1003,15 +1003,37 @@ class NexaInferenceService @Inject constructor(
 
         if (cleanPrompt.contains("user: ") || cleanPrompt.contains("assistant: ")) {
             try {
+                var systemPromptText = ""
                 val segments = cleanPrompt.split("\n\n").filter { it.isNotBlank() }
+                
                 for (segment in segments) {
                     when {
-                        segment.startsWith("user: ") -> messages.add(ChatMessage("user", segment.removePrefix("user: ").trim()))
-                        segment.startsWith("assistant: ") -> messages.add(ChatMessage("assistant", segment.removePrefix("assistant: ").trim()))
+                        segment.startsWith("system: ") -> {
+                            val content = segment.removePrefix("system: ").trim()
+                            if (content.isNotEmpty()) {
+                                systemPromptText += content + "\n\n"
+                            }
+                        }
+                        segment.startsWith("user: ") -> {
+                            val content = segment.removePrefix("user: ").trim()
+                            if (messages.isEmpty() && systemPromptText.isNotEmpty()) {
+                                // Inject system prompt into the first user turn.
+                                // This solves issues with Gemma models and others that don't support a dedicated system role.
+                                messages.add(ChatMessage("user", systemPromptText + content))
+                                systemPromptText = "" // Clear it so we don't inject it again
+                            } else {
+                                messages.add(ChatMessage("user", content))
+                            }
+                        }
+                        segment.startsWith("assistant: ") -> {
+                            messages.add(ChatMessage("assistant", segment.removePrefix("assistant: ").trim()))
+                        }
                         else -> {
-                            if (messages.isEmpty()) messages.add(ChatMessage("system", segment.trim()))
-                            else {
-                                // Append to last message if unsure
+                            // If it doesn't have a marker, consider it a system prompt if at the very beginning
+                            if (messages.isEmpty()) {
+                                systemPromptText += segment.trim() + "\n\n"
+                            } else {
+                                // Append to the last message
                                 val last = messages.last()
                                 val role = try { last::class.java.getDeclaredField("role").apply { isAccessible = true }.get(last) as String } catch(e:Exception) { "user" }
                                 val content = try { last::class.java.getDeclaredField("content").apply { isAccessible = true }.get(last) as String } catch(e:Exception) { "" }
@@ -1019,6 +1041,10 @@ class NexaInferenceService @Inject constructor(
                             }
                         }
                     }
+                }
+                // If there's STILL a system prompt but no user turn was found to attach it to, add it
+                if (systemPromptText.isNotEmpty()) {
+                    messages.add(0, ChatMessage("system", systemPromptText.trimEnd()))
                 }
             } catch (e: Exception) {
                 // Parsing failed, proceed with empty messages

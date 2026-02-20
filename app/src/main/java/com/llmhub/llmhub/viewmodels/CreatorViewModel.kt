@@ -23,6 +23,15 @@ class CreatorViewModel(
     private val context: Context
 ) : ViewModel() {
 
+    fun renameCreator(creatorId: String, newName: String) {
+        viewModelScope.launch {
+            val creator = repository.getCreatorById(creatorId)
+            if (creator != null) {
+                repository.insertCreator(creator.copy(name = newName))
+            }
+        }
+    }
+
     private val prefs = context.getSharedPreferences("creator_prefs", Context.MODE_PRIVATE)
 
     private val _isGenerating = MutableStateFlow(false)
