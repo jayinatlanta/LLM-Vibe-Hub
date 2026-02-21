@@ -42,6 +42,7 @@ fun ChatDrawer(
     val creators by viewModel.allCreators.collectAsState()
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var chatToRename by remember { mutableStateOf<ChatEntity?>(null) }
+    var creatorToRename by remember { mutableStateOf<com.llmhub.llmhub.data.CreatorEntity?>(null) }
     
     // ... dialog logic ...
     
@@ -53,6 +54,17 @@ fun ChatDrawer(
                 chatToRename = null
             },
             onDismiss = { chatToRename = null }
+        )
+    }
+
+    if (creatorToRename != null) {
+        com.llmhub.llmhub.screens.RenameChatDialog(
+            chatTitle = creatorToRename!!.name,
+            onConfirm = { newName ->
+                viewModel.renameCreator(creatorToRename!!.id, newName)
+                creatorToRename = null
+            },
+            onDismiss = { creatorToRename = null }
         )
     }
 
@@ -89,7 +101,8 @@ fun ChatDrawer(
                         CreatorItem(
                             creator = creator,
                             onClick = { onNavigateToCreatorChat(creator.id) },
-                            onDelete = { viewModel.deleteCreator(creator) }
+                            onDelete = { viewModel.deleteCreator(creator) },
+                            onRename = { creatorToRename = creator }
                         )
                     }
                 }

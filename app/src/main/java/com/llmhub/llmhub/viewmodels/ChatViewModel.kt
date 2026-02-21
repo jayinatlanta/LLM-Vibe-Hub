@@ -568,6 +568,13 @@ class ChatViewModel(
                     }
                 }
                 
+                // CRITICAL: Synchronize the selectedModel with the newly established currentModel
+                // so the ChatScreen accurately reflects the loaded/target model.
+                if (currentModel != null) {
+                    _selectedModel.value = currentModel
+                    saveChatSettings()
+                }
+                
                 messageCollectionJob = launch {
                     repository.getMessagesForChat(chatId).collectLatest { messageList ->
                         _messages.value = messageList
@@ -755,15 +762,21 @@ class ChatViewModel(
 
                 val errorMessage = StringBuilder()
                 errorMessage.append("❌ **Backend Failure**\n\n")
-                errorMessage.append("The current model (${currentModel?.name}) could not be loaded by any supported backend (Nexa or MediaPipe).\n\n")
                 
-                if (onnxAlternative != null) {
-                    errorMessage.append("💡 **Recommendation:**\n")
-                    errorMessage.append("We found an **ONNX** version of this model: **${onnxAlternative.name}**.\n")
-                    errorMessage.append("ONNX is fully supported on your Pixel Fold's Tensor chip. Please switch to this model (you may need to download it first).")
+                if (currentModel?.modelFormat == "onnx") {
+                    errorMessage.append("A final, sorry, no variant of this ONNX model could be successfully loaded. ONNX fallback has failed.\n\n")
+                    errorMessage.append("Logs indicte this is usually caused by unsupported operations for your device's specific hardware.")
                 } else {
-                    errorMessage.append("💡 **Recommendation:**\n")
-                    errorMessage.append("Try using a different model format (like .task or .onnx) which might be more compatible with your device.")
+                    errorMessage.append("The current model (${currentModel?.name}) could not be loaded by any supported backend (Nexa or MediaPipe).\n\n")
+                    
+                    if (onnxAlternative != null) {
+                        errorMessage.append("💡 **Recommendation:**\n")
+                        errorMessage.append("We found an **ONNX** version of this model: **${onnxAlternative.name}**.\n")
+                        errorMessage.append("ONNX is fully supported on your Pixel Fold's Tensor chip. Please switch to this model (you may need to download it first).")
+                    } else {
+                        errorMessage.append("💡 **Recommendation:**\n")
+                        errorMessage.append("Try using a different model format (like .task or .onnx) which might be more compatible with your device.")
+                    }
                 }
 
                 repository.addMessage(chatId, errorMessage.toString(), isFromUser = false)
@@ -2285,10 +2298,10 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
     
     fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean) {
         // Call the new overloaded method with disableAudio = false for backward compatibility
-        switchModelWithBackend(newModel, backend, disableVision, disableAudio = false)
+        switchModelWithBackend(newModel, backend, disableVision, disableAudio = false, deviceId = null)
     }
     
-    fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean, disableAudio: Boolean) {
+    fun switchModelWithBackend(newModel: LLMModel, backend: LlmInference.Backend, disableVision: Boolean, disableAudio: Boolean, deviceId: String? = null) {
         viewModelScope.launch {
             // Store the modality disabled states
             isVisionDisabled = disableVision
@@ -2296,6 +2309,7 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
             // Immediately reflect the user's choice in UI
             _selectedModel.value = newModel
             _selectedBackend.value = backend
+            _selectedNpuDeviceId.value = deviceId
             
             // Persist settings
             saveChatSettings()

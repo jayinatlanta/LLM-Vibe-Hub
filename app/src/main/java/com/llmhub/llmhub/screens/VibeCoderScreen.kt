@@ -79,6 +79,7 @@ fun VibeCoderScreen(
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val selectedNpuDeviceId by viewModel.selectedNpuDeviceId.collectAsState()
     val isModelLoaded by viewModel.isModelLoaded.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
@@ -87,9 +88,9 @@ fun VibeCoderScreen(
     val codeLanguage by viewModel.codeLanguage.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     
-    // Scroll state for auto-scrolling
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
+    val codeScrollState = rememberScrollState()
     
     // Snackbar
     val snackbarHostState = remember { SnackbarHostState() }
@@ -104,6 +105,7 @@ fun VibeCoderScreen(
         if (generatedCode.isNotEmpty() && isProcessing) {
             coroutineScope.launch {
                 scrollState.animateScrollTo(scrollState.maxValue)
+                codeScrollState.animateScrollTo(codeScrollState.maxValue)
             }
         }
     }
@@ -145,7 +147,6 @@ fun VibeCoderScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Model Selector
             ModelSelectorCard(
                 models = availableModels,
                 selectedModel = selectedModel,
@@ -153,8 +154,9 @@ fun VibeCoderScreen(
                     viewModel.selectModel(model)
                 },
                 selectedBackend = selectedBackend,
-                onBackendSelected = { backend, _ ->
-                    viewModel.selectBackend(backend)
+                selectedNpuDeviceId = selectedNpuDeviceId,
+                onBackendSelected = { backend, deviceId ->
+                    viewModel.selectBackend(backend, deviceId)
                 },
                 onLoadModel = {
                     viewModel.loadModel()
@@ -320,7 +322,11 @@ fun VibeCoderScreen(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = if (isPlanning) "Planning architecture..." else stringResource(R.string.vibe_coder_generating),
+                                text = when {
+                                    isPlanning -> "Planning architecture..."
+                                    promptText.isNotEmpty() && !promptText.equals("new", ignoreCase = true) -> "Revising code..."
+                                    else -> stringResource(R.string.vibe_coder_generating)
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -338,7 +344,7 @@ fun VibeCoderScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(12.dp)
-                                        .verticalScroll(rememberScrollState()),
+                                        .verticalScroll(codeScrollState),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
@@ -346,39 +352,41 @@ fun VibeCoderScreen(
                             }
                             
                             // Action buttons for generated code
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Button(
-                                    onClick = {
-                                        clipboardManager.setText(AnnotatedString(generatedCode))
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(40.dp),
-                                    colors = ButtonDefaults.outlinedButtonColors()
+                            if (!isProcessing) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.vibe_coder_copy), style = MaterialTheme.typography.labelSmall)
-                                }
-                                
-                                if (codeLanguage == CodeLanguage.HTML) {
                                     Button(
                                         onClick = {
-                                            onNavigateToCanvas?.invoke(generatedCode, "html")
+                                            clipboardManager.setText(AnnotatedString(generatedCode))
                                         },
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(40.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary
-                                        )
+                                        colors = ButtonDefaults.outlinedButtonColors()
                                     ) {
-                                        Icon(Icons.Default.Preview, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(R.string.vibe_coder_preview), style = MaterialTheme.typography.labelSmall)
+                                        Text(stringResource(R.string.vibe_coder_copy), style = MaterialTheme.typography.labelSmall)
+                                    }
+                                    
+                                    if (codeLanguage == CodeLanguage.HTML) {
+                                        Button(
+                                            onClick = {
+                                                onNavigateToCanvas?.invoke(generatedCode, "html")
+                                            },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(40.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        ) {
+                                            Icon(Icons.Default.Preview, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(stringResource(R.string.vibe_coder_preview), style = MaterialTheme.typography.labelSmall)
+                                        }
                                     }
                                 }
                             }
