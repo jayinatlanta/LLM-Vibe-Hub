@@ -141,7 +141,15 @@ class ModelDownloader(
                 readTimeout = 60_000
                 instanceFollowRedirects = false // Manually handle redirects to preserve auth header
                 setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-                if (!hfToken.isNullOrBlank()) {
+                
+                // Only send HuggingFace token to huggingface.co or hf.co domains.
+                // Sending it to a redirected domain (like an AWS S3 pre-signed URL) will cause
+                // the S3 strictly-enforced signature verification to fail with a 403 Forbidden.
+                val host = url.host ?: ""
+                val isHuggingFaceDomain = host == "huggingface.co" || host.endsWith(".huggingface.co") || 
+                                          host == "hf.co" || host.endsWith(".hf.co")
+                                          
+                if (isHuggingFaceDomain && !hfToken.isNullOrBlank()) {
                     setRequestProperty("Authorization", "Bearer $hfToken")
                 }
                 if (rangeStart != null && rangeStart > 0) {
