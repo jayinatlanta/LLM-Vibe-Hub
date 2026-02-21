@@ -298,8 +298,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                             temperature = temperature
                         )
                         
-                        // Timeout for planning phase (90 seconds)
-                        val planResult = kotlinx.coroutines.withTimeoutOrNull(90_000L) {
+                        // Timeout for planning phase (3 minutes)
+                        val planResult = kotlinx.coroutines.withTimeoutOrNull(180_000L) {
                             val specPrompt = buildSpecPrompt(prompt, "")
                             val specChatId = "vibe-spec-${UUID.randomUUID()}"
                             
@@ -319,7 +319,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                         }
                         
                         if (planResult == null) {
-                            Log.w("VibeCoderVM", "Planning phase timed out after 90s, using generated spec up to this point: $builtSpec")
+                            Log.w("VibeCoderVM", "Planning phase timed out after 3 minutes, using generated spec up to this point: $builtSpec")
                         }
                         
                         // DEBUG: Log the Architect's generated requirements

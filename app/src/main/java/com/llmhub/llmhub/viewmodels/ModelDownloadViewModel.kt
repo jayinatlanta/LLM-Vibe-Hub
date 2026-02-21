@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.llmhub.llmhub.data.LLMModel
 import com.llmhub.llmhub.data.ModelData
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import com.llmhub.llmhub.data.ModelDownloader
@@ -30,6 +33,9 @@ class ModelDownloadViewModel(application: Application) : AndroidViewModel(applic
     
     private val _hfToken = MutableStateFlow<String?>(null)
     val hfToken: StateFlow<String?> = _hfToken.asStateFlow()
+
+    private val _downloadErrors = MutableSharedFlow<Pair<String, String>>()
+    val downloadErrors: SharedFlow<Pair<String, String>> = _downloadErrors.asSharedFlow()
 
     private val ktorClient = HttpClient(Android)
     private val context = application.applicationContext
@@ -472,7 +478,9 @@ class ModelDownloadViewModel(application: Application) : AndroidViewModel(applic
             modelDownloader.downloadModel(model)
                 .catch { exception ->
                     // Handle exceptions with better error reporting
-                    android.util.Log.e("ModelDownloadViewModel", "Download failed for ${model.name}: ${exception.message}", exception)
+                    val errorMsg = exception.message ?: "Unknown error occurred"
+                    android.util.Log.e("ModelDownloadViewModel", "Download failed for ${model.name}: $errorMsg", exception)
+                    _downloadErrors.emit(Pair(model.name, errorMsg))
                     updateModel(model.name) { 
                         it.copy(
                             isDownloading = false,

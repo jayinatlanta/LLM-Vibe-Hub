@@ -111,6 +111,13 @@ fun ModelDownloadScreen(
     val imageGenGrouped = imageGenerationModels.groupBy { it.name.substringBefore("(").trim() }
 
     var showImportDialog by remember { mutableStateOf(false) }
+    var errorDialogInfo by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    LaunchedEffect(downloadViewModel) {
+        downloadViewModel.downloadErrors.collect { errorInfo ->
+            errorDialogInfo = errorInfo
+        }
+    }
 
     // Keep screen on while any model is downloading or extracting
     val isAnyModelDownloading = models.any { it.isDownloading || it.isExtracting }
@@ -278,6 +285,20 @@ fun ModelDownloadScreen(
                         showImportDialog = false
                     }
                     success
+                }
+            )
+        }
+        
+        // Error Dialog
+        errorDialogInfo?.let { (modelName, errorMessage) ->
+            AlertDialog(
+                onDismissRequest = { errorDialogInfo = null },
+                title = { Text(stringResource(R.string.error) + ": " + modelName) },
+                text = { Text(errorMessage) },
+                confirmButton = {
+                    TextButton(onClick = { errorDialogInfo = null }) {
+                        Text(stringResource(android.R.string.ok))
+                    }
                 }
             )
         }

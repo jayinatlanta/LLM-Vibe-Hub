@@ -250,8 +250,8 @@ class CreatorViewModel(
                     Do not add any other text or conversational filler. Just the format above.
                 """.trimIndent()
 
-                // Add 90-second timeout
-                withTimeout(90_000L) {
+                // Add 3 minute timeout
+                withTimeout(180_000L) {
                     val response = inferenceService.generateResponse(metaPrompt, model)
                     
                     val parsedCreator = parseResponse(response, userPrompt)
@@ -264,7 +264,7 @@ class CreatorViewModel(
 
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 Log.e("CreatorViewModel", "Generation timed out", e)
-                _error.value = "Generation timed out (90s limit). Please try a simpler prompt or faster model."
+                _error.value = "Generation timed out (3 min limit). Please try a simpler prompt or faster model."
             } catch (e: Exception) {
                 Log.e("CreatorViewModel", "Generation failed", e)
                 _error.value = "Error: ${e.message}"
