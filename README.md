@@ -146,8 +146,7 @@ Notes
 
 [![Star History Chart](https://api.star-history.com/svg?repos=timmyy123/LLM-Hub&type=date&legend=top-left)](https://www.star-history.com/#timmyy123/LLM-Hub&type=date&legend=top-left)
 
----
-*If you want, I can also add a short “Release notes / changelog” section and a quick performance guide for device profiles.*
+
 
 
 
