@@ -43,6 +43,8 @@ fun ChatDrawer(
     var showDeleteAllDialog by remember { mutableStateOf(false) }
     var chatToRename by remember { mutableStateOf<ChatEntity?>(null) }
     var creatorToRename by remember { mutableStateOf<com.llmhub.llmhub.data.CreatorEntity?>(null) }
+    var chatToDelete by remember { mutableStateOf<ChatEntity?>(null) }
+    var creatorToDelete by remember { mutableStateOf<com.llmhub.llmhub.data.CreatorEntity?>(null) }
     
     // ... dialog logic ...
     
@@ -65,6 +67,44 @@ fun ChatDrawer(
                 creatorToRename = null
             },
             onDismiss = { creatorToRename = null }
+        )
+    }
+
+    if (chatToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { chatToDelete = null },
+            title = { Text(stringResource(R.string.dialog_delete_chat_title)) },
+            text = { Text(stringResource(R.string.dialog_delete_chat_message, chatToDelete!!.title)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteChat(chatToDelete!!.id)
+                        chatToDelete = null
+                    }
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { chatToDelete = null }) { Text(stringResource(R.string.action_cancel)) }
+            }
+        )
+    }
+
+    if (creatorToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { creatorToDelete = null },
+            title = { Text(stringResource(R.string.dialog_delete_creator_title)) },
+            text = { Text(stringResource(R.string.dialog_delete_creator_message, creatorToDelete!!.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteCreator(creatorToDelete!!)
+                        creatorToDelete = null
+                    }
+                ) { Text(stringResource(R.string.action_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { creatorToDelete = null }) { Text(stringResource(R.string.action_cancel)) }
+            }
         )
     }
 
@@ -101,7 +141,7 @@ fun ChatDrawer(
                         CreatorItem(
                             creator = creator,
                             onClick = { onNavigateToCreatorChat(creator.id) },
-                            onDelete = { viewModel.deleteCreator(creator) },
+                            onDelete = { creatorToDelete = creator },
                             onRename = { creatorToRename = creator }
                         )
                     }
@@ -131,7 +171,7 @@ fun ChatDrawer(
                     ChatHistoryItem(
                         chat = chat,
                         onClick = { onNavigateToChat(chat.id) },
-                        onDelete = { viewModel.deleteChat(chat.id) },
+                        onDelete = { chatToDelete = chat },
                         onRename = { chatToRename = chat }
                     )
                 }

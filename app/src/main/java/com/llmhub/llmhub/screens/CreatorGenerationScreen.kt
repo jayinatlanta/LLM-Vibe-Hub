@@ -166,6 +166,7 @@ fun CreatorGenerationScreen(
                     .height(150.dp)
                     .bringIntoViewRequester(promptBringRequester)
                     .onFocusChanged { promptFocused = it.isFocused },
+                minLines = 3,
                 label = { Text("Describe your creAItor...") },
                 placeholder = { Text("e.g., summarize any topic as a rhyming poem of less than 10 lines") },
                 shape = RoundedCornerShape(12.dp),
