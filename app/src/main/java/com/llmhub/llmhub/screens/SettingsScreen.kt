@@ -69,6 +69,11 @@ fun SettingsScreen(
     val currentLanguage by themeViewModel.appLanguage.collectAsState()
     val autoReadoutEnabled by themeViewModel.autoReadoutEnabled.collectAsState()
     
+    val kidModeManager = remember { com.llmhub.llmhub.utils.KidModeManager(context) }
+    val isKidModeEnabled by kidModeManager.isKidModeEnabled.collectAsState()
+    var showKidModeSetDialog by remember { mutableStateOf(false) }
+    var showKidModeVerifyDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -284,6 +289,49 @@ fun SettingsScreen(
                             checked = autoReadoutEnabled,
                             onCheckedChange = { enabled ->
                                 themeViewModel.setAutoReadoutEnabled(enabled)
+                            }
+                        )
+                    }
+
+                    // Kid Mode toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Face,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.kid_mode_title),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (isKidModeEnabled) stringResource(R.string.kid_mode_enabled_status) else stringResource(R.string.kid_mode_disabled_status),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Switch(
+                            checked = isKidModeEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) {
+                                    showKidModeSetDialog = true
+                                } else {
+                                    showKidModeVerifyDialog = true
+                                }
                             }
                         )
                     }
@@ -788,6 +836,30 @@ fun SettingsScreen(
         }
     }
     
+    if (showKidModeSetDialog) {
+        com.llmhub.llmhub.ui.components.KidModeSetPinDialog(
+            onConfirm = { pin ->
+                kidModeManager.enableKidMode(pin)
+                showKidModeSetDialog = false
+            },
+            onDismiss = { showKidModeSetDialog = false }
+        )
+    }
+
+    if (showKidModeVerifyDialog) {
+        com.llmhub.llmhub.ui.components.KidModeVerifyPinDialog(
+            onConfirm = { pin ->
+                val success = kidModeManager.disableKidMode(pin)
+                if (success) {
+                    showKidModeVerifyDialog = false
+                } else {
+                    android.widget.Toast.makeText(context, context.getString(R.string.kid_mode_incorrect_pin), android.widget.Toast.LENGTH_SHORT).show()
+                }
+            },
+            onDismiss = { showKidModeVerifyDialog = false }
+        )
+    }
+
     // Theme Selection Dialog
     if (showThemeDialog) {
         val configuration = LocalConfiguration.current
