@@ -30,7 +30,6 @@
         android:localeConfig="@xml/locales_config"
         android:theme="@style/Theme.LlmHub"
         android:largeHeap="true"
-        android:extractNativeLibs="false"
         android:networkSecurityConfig="@xml/network_security_config"
         tools:targetApi="31">
         
