@@ -2,29 +2,28 @@ package com.llmhub.llmhub.screens
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.llmhub.llmhub.R
-import com.llmhub.llmhub.components.ModelSelectorCard
+import com.llmhub.llmhub.components.FeatureModelSettingsSheet
 import com.llmhub.llmhub.viewmodels.VibeCoderViewModel
 import com.llmhub.llmhub.viewmodels.CodeLanguage
 import kotlinx.coroutines.launch
@@ -65,6 +64,12 @@ fun VibeCoderScreen(
         onDispose { view.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
     }
 
+    // Unload model when truly leaving this screen (not when going to canvas preview)
+    var navigatingToCanvas by remember { mutableStateOf(false) }
+    DisposableEffect(Unit) {
+        onDispose { if (!navigatingToCanvas) viewModel.stopAndUnloadOnExit() }
+    }
+
     LaunchedEffect(imeVisible.value) {
         if (imeVisible.value && promptFocused) {
             promptBringRequester.bringIntoView()
@@ -74,12 +79,14 @@ fun VibeCoderScreen(
     // UI State
     var promptText by remember { mutableStateOf("") }
     var showSettingsSheet by remember { mutableStateOf(false) }
+    var codeFocused by remember { mutableStateOf(false) }
     
     // ViewModel states
     val availableModels by viewModel.availableModels.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
     val selectedNpuDeviceId by viewModel.selectedNpuDeviceId.collectAsState()
+    val selectedMaxTokens by viewModel.selectedMaxTokens.collectAsState()
     val isModelLoaded by viewModel.isModelLoaded.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
@@ -87,6 +94,7 @@ fun VibeCoderScreen(
     val generatedCode by viewModel.generatedCode.collectAsState()
     val codeLanguage by viewModel.codeLanguage.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val enableThinking by viewModel.enableThinking.collectAsState()
     
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -100,13 +108,12 @@ fun VibeCoderScreen(
             viewModel.clearError()
         }
     }
-    // Auto-scroll to bottom when code is being generated
-    LaunchedEffect(generatedCode) {
-        if (generatedCode.isNotEmpty() && isProcessing) {
-            coroutineScope.launch {
-                scrollState.animateScrollTo(scrollState.maxValue)
-                codeScrollState.animateScrollTo(codeScrollState.maxValue)
-            }
+    // Auto-scroll to bottom when code is being generated —
+    // use snapshotFlow on maxValue so we scroll AFTER layout has measured new content
+    LaunchedEffect(isProcessing) {
+        if (isProcessing) {
+            snapshotFlow { codeScrollState.maxValue }
+                .collect { max -> codeScrollState.animateScrollTo(max) }
         }
     }
     
@@ -120,53 +127,91 @@ fun VibeCoderScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.vibe_coder_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    IconButton(onClick = {
+                        viewModel.stopAndUnloadOnExit()
+                        onNavigateBack()
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.back))
                     }
                 },
                 actions = {
-                    Text(
-                        text = "v3.6",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(end = 16.dp)
-                    )
                     IconButton(onClick = { showSettingsSheet = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.feature_settings_title))
                     }
                 }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .imePadding() // specific fix for keyboard overlay
-                .verticalScroll(scrollState)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            ModelSelectorCard(
-                models = availableModels,
-                selectedModel = selectedModel,
-                onModelSelected = { model ->
-                    viewModel.selectModel(model)
-                },
-                selectedBackend = selectedBackend,
-                selectedNpuDeviceId = selectedNpuDeviceId,
-                onBackendSelected = { backend, deviceId ->
-                    viewModel.selectBackend(backend, deviceId)
-                },
-                onLoadModel = {
-                    viewModel.loadModel()
-                },
-                isLoading = isLoading,
-                isModelLoaded = isModelLoaded
-            )
-            
-            // Prompt Input Section
-            if (isModelLoaded) {
+        if (!isModelLoaded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(innerPadding)
+                    .padding(32.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ModelTraining,
+                    contentDescription = null,
+                    modifier = Modifier.size(80.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+                Text(
+                    text = stringResource(
+                        if (availableModels.isEmpty()) R.string.download_models_first
+                        else R.string.scam_detector_load_model
+                    ),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = stringResource(R.string.scam_detector_load_model_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                FilledTonalButton(
+                    onClick = {
+                        if (availableModels.isEmpty()) onNavigateToModels()
+                        else showSettingsSheet = true
+                    },
+                    modifier = Modifier.fillMaxWidth(0.6f)
+                ) {
+                    Icon(
+                        imageVector = if (availableModels.isEmpty()) Icons.Default.GetApp else Icons.Default.Tune,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        stringResource(
+                            if (availableModels.isEmpty()) R.string.download_models
+                            else R.string.feature_settings_title
+                        )
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .imePadding()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+            // Prompt Input Section — hidden when editing code with keyboard up
+            AnimatedVisibility(
+                visible = !(codeFocused && imeVisible.value),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -193,7 +238,7 @@ fun VibeCoderScreen(
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        text = "Modification Mode",
+                                        text = stringResource(R.string.vibe_coder_modification_mode),
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onTertiaryContainer
@@ -249,7 +294,7 @@ fun VibeCoderScreen(
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        if (generatedCode.isNotBlank()) "Refine Code" 
+                                        if (generatedCode.isNotBlank()) stringResource(R.string.vibe_coder_refine)
                                         else stringResource(R.string.vibe_coder_generate)
                                     )
                                 }
@@ -265,26 +310,28 @@ fun VibeCoderScreen(
                                     .padding(end = 0.dp),
                                 colors = ButtonDefaults.outlinedButtonColors()
                             ) {
-                                Icon(Icons.Default.Clear, contentDescription = "New Project / Clear Context")
+                                Icon(Icons.Default.Clear, contentDescription = stringResource(R.string.vibe_coder_clear))
                             }
                         }
                     }
                 }
-            }
+            } // end AnimatedVisibility prompt section
             
-            // Code Output Section
+            // Code Output Section — fills remaining height
             if (generatedCode.isNotEmpty() || isProcessing) {
                 Card(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Column(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .fillMaxSize()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Header
+                        // Header row
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -295,206 +342,128 @@ fun VibeCoderScreen(
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            
-                            if (codeLanguage != CodeLanguage.UNKNOWN) {
-                                Surface(
-                                    modifier = Modifier
-                                        .padding(start = 8.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
-                                ) {
-                                    Text(
-                                        text = codeLanguage.name,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (codeLanguage != CodeLanguage.UNKNOWN) {
+                                    Surface(
+                                        modifier = Modifier.padding(end = 8.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                                    ) {
+                                        Text(
+                                            text = codeLanguage.name,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.tertiary
+                                        )
+                                    }
+                                }
+                                if (!isProcessing && generatedCode.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { clipboardManager.setText(AnnotatedString(generatedCode)) },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = stringResource(R.string.vibe_coder_copy), modifier = Modifier.size(16.dp))
+                                    }
                                 }
                             }
                         }
-                        
-                        // Loading indicator
+
+                        // Loading indicator (streaming)
                         if (isProcessing && generatedCode.isEmpty()) {
                             LinearProgressIndicator(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(4.dp),
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
                                 text = when {
-                                    isPlanning -> "Planning architecture..."
-                                    promptText.isNotEmpty() && !promptText.equals("new", ignoreCase = true) -> "Revising code..."
+                                    isPlanning -> stringResource(R.string.vibe_coder_planning)
+                                    promptText.isNotEmpty() && !promptText.equals("new", ignoreCase = true) -> stringResource(R.string.vibe_coder_revising)
                                     else -> stringResource(R.string.vibe_coder_generating)
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                        } else if (generatedCode.isNotEmpty()) {
-                            // Code display
-                            Surface(
+                        }
+
+                        // Editable code field — fills remaining Card space, auto-scrolls during generation
+                        if (generatedCode.isNotEmpty() || isProcessing) {
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 100.dp, max = 300.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                shape = RoundedCornerShape(8.dp)
+                                    .weight(1f)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    )
+                                    .verticalScroll(codeScrollState)
+                                    .padding(12.dp)
                             ) {
-                                Text(
-                                    text = generatedCode,
+                                BasicTextField(
+                                    value = generatedCode,
+                                    onValueChange = { if (!isProcessing) viewModel.updateGeneratedCode(it) },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp)
-                                        .verticalScroll(codeScrollState),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                        .onFocusChanged { codeFocused = it.isFocused },
+                                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    ),
+                                    readOnly = isProcessing,
+                                    enabled = true
                                 )
                             }
-                            
-                            // Action buttons for generated code
-                            if (!isProcessing) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            clipboardManager.setText(AnnotatedString(generatedCode))
-                                        },
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .height(40.dp),
-                                        colors = ButtonDefaults.outlinedButtonColors()
-                                    ) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(R.string.vibe_coder_copy), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                    
-                                    if (codeLanguage == CodeLanguage.HTML) {
-                                        Button(
-                                            onClick = {
-                                                onNavigateToCanvas?.invoke(generatedCode, "html")
-                                            },
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(40.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = MaterialTheme.colorScheme.primary
-                                            )
-                                        ) {
-                                            Icon(Icons.Default.Preview, contentDescription = null, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(stringResource(R.string.vibe_coder_preview), style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
-                                }
+                        }
+
+                        // Preview pill button — shown below code box for HTML
+                        if (!isProcessing && generatedCode.isNotEmpty() && codeLanguage == CodeLanguage.HTML) {
+                            Button(
+                                onClick = {
+                                    navigatingToCanvas = true
+                                    onNavigateToCanvas?.invoke(generatedCode, "html")
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary
+                                )
+                            ) {
+                                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.vibe_coder_preview))
                             }
                         }
                     }
                 }
             }
-            
-            // No Model Loaded Message
-            if (!isModelLoaded && !isLoading) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.errorContainer,
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error
-                        )
-                        Text(
-                            text = stringResource(R.string.vibe_coder_no_model),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(8.dp))
-        }
+            } // end Column
+        } // end else
     }
-    
+
     // Settings Bottom Sheet
     if (showSettingsSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSettingsSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 32.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.vibe_coder_settings),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                
-                Divider()
-                
-                Text(
-                    text = stringResource(R.string.vibe_coder_backend_select),
-                    style = MaterialTheme.typography.titleSmall
-                )
-                
-                BackendSelector(
-                    selectedBackend = selectedBackend,
-                    onBackendSelected = { backend ->
-                        viewModel.selectBackend(backend)
-                    }
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-                
-                Button(
-                    onClick = { showSettingsSheet = false },
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .height(40.dp)
-                ) {
-                    Text(stringResource(R.string.close))
-                }
-                
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
-    }
-}
-
-@Composable
-fun BackendSelector(
-    selectedBackend: com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend?,
-    onBackendSelected: (com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend) -> Unit
-) {
-    val backends = listOf(
-        com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend.GPU,
-        com.google.mediapipe.tasks.genai.llminference.LlmInference.Backend.CPU
-    )
-    
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        backends.forEach { backend ->
-            FilterChip(
-                selected = selectedBackend == backend,
-                onClick = { onBackendSelected(backend) },
-                label = { Text(backend.name) },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
+        FeatureModelSettingsSheet(
+            availableModels = availableModels,
+            initialSelectedModel = selectedModel,
+            initialSelectedBackend = selectedBackend,
+            initialSelectedNpuDeviceId = selectedNpuDeviceId,
+            initialMaxTokens = selectedMaxTokens,
+            currentlyLoadedModel = if (isModelLoaded) selectedModel else null,
+            isLoadingModel = isLoading,
+            onModelSelected = { viewModel.selectModel(it) },
+            onBackendSelected = { backend, deviceId -> viewModel.selectBackend(backend, deviceId) },
+            onMaxTokensChanged = { viewModel.setMaxTokens(it) },
+            onLoadModel = { model, maxTokens, backend, deviceId, nGpuLayers, isThinkingEnabled ->
+                viewModel.selectModel(model)
+                viewModel.setMaxTokens(maxTokens)
+                if (backend != null) viewModel.selectBackend(backend, deviceId)
+                viewModel.setNGpuLayers(nGpuLayers)
+                viewModel.setEnableThinking(isThinkingEnabled)
+                viewModel.loadModel()
+            },
+            onUnloadModel = { viewModel.unloadModel() },
+            onDismiss = { showSettingsSheet = false }
+        )
     }
 }

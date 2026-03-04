@@ -319,7 +319,6 @@ class SDBackendService : Service() {
         val env = mutableMapOf<String, String>()
         
         val systemLibPaths = listOf(
-            applicationInfo.nativeLibraryDir,
             runtimeDir.absolutePath,
             "/system/lib64",
             "/vendor/lib64",
@@ -419,6 +418,8 @@ class SDBackendService : Service() {
                     val exitCode = process.waitFor()
                     Log.w(TAG, "Backend process exited with code: $exitCode")
                 }
+            } catch (e: java.io.InterruptedIOException) {
+                Log.i(TAG, "Monitor thread interrupted during backend shutdown")
             } catch (e: Exception) {
                 Log.e(TAG, "Monitor thread error", e)
             }

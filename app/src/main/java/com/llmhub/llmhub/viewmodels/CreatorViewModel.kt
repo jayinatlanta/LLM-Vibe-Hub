@@ -13,15 +13,21 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class CreatorViewModel(
     private val repository: ChatRepository,
     private val inferenceService: InferenceService,
     private val context: Context
 ) : ViewModel() {
+
+    private var generationJob: Job? = null
 
     fun renameCreator(creatorId: String, newName: String) {
         viewModelScope.launch {
@@ -33,6 +39,7 @@ class CreatorViewModel(
     }
 
     private val prefs = context.getSharedPreferences("creator_prefs", Context.MODE_PRIVATE)
+    private val unloadMutex = Mutex()
 
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
@@ -55,6 +62,14 @@ class CreatorViewModel(
 
     private val _selectedNpuDeviceId = MutableStateFlow<String?>(null)
     val selectedNpuDeviceId: StateFlow<String?> = _selectedNpuDeviceId.asStateFlow()
+
+    private val _selectedNGpuLayers = MutableStateFlow<Int?>(null)
+
+    private val _enableThinking = MutableStateFlow(true)
+    val enableThinking: StateFlow<Boolean> = _enableThinking.asStateFlow()
+
+    private val _selectedMaxTokens = MutableStateFlow(4096)
+    val selectedMaxTokens: StateFlow<Int> = _selectedMaxTokens.asStateFlow()
 
     private val _isModelLoaded = MutableStateFlow(false)
     val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
@@ -83,17 +98,19 @@ class CreatorViewModel(
         } catch (_: IllegalArgumentException) {
             LlmInference.Backend.GPU
         }
-        
         _selectedNpuDeviceId.value = prefs.getString("selected_npu_device", null)
+        _enableThinking.value = prefs.getBoolean("enable_thinking", true)
+        _selectedNGpuLayers.value = prefs.getInt("n_gpu_layers", 999).let { if (it == 999) null else it }
 
         val savedModelName = prefs.getString("selected_model_name", null)
-        if (savedModelName != null && _selectedModel.value == null) { // Only load if not already set by loaded check
+        if (savedModelName != null && _selectedModel.value == null) {
             viewModelScope.launch {
-                // Wait for available models to populate
-                kotlinx.coroutines.delay(100) 
+                kotlinx.coroutines.delay(100)
                 val model = _availableModels.value.find { it.name == savedModelName }
                 if (model != null) {
                     _selectedModel.value = model
+                    val savedTokens = prefs.getInt("max_tokens_${model.name}", minOf(4096, model.contextWindowSize.coerceAtLeast(1)))
+                    _selectedMaxTokens.value = savedTokens.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
                     if (!model.supportsGpu && _selectedBackend.value == LlmInference.Backend.GPU) {
                         _selectedBackend.value = LlmInference.Backend.CPU
                     }
@@ -106,9 +123,32 @@ class CreatorViewModel(
         prefs.edit().apply {
             putString("selected_model_name", _selectedModel.value?.name)
             putString("selected_backend", _selectedBackend.value?.name)
+            _selectedModel.value?.name?.let { name ->
+                putInt("max_tokens_$name", _selectedMaxTokens.value)
+            }
             putString("selected_npu_device", _selectedNpuDeviceId.value)
+            putBoolean("enable_thinking", _enableThinking.value)
+            putInt("n_gpu_layers", _selectedNGpuLayers.value ?: 999)
             apply()
         }
+    }
+
+    private fun applyGenerationParametersToService() {
+        val model = _selectedModel.value
+        val effectiveMaxTokens = if (model != null) {
+            _selectedMaxTokens.value.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
+        } else {
+            _selectedMaxTokens.value
+        }
+
+        inferenceService.setGenerationParameters(
+            effectiveMaxTokens,
+            null,
+            null,
+            null,
+            _selectedNGpuLayers.value,
+            _enableThinking.value
+        )
     }
 
     private fun loadAvailableModels() {
@@ -121,6 +161,8 @@ class CreatorViewModel(
             if (_selectedModel.value == null && !_isModelLoaded.value) {
                 available.firstOrNull()?.let {
                     _selectedModel.value = it
+                    val savedTokens = prefs.getInt("max_tokens_${it.name}", minOf(4096, it.contextWindowSize.coerceAtLeast(1)))
+                    _selectedMaxTokens.value = savedTokens.coerceIn(1, it.contextWindowSize.coerceAtLeast(1))
                     _selectedBackend.value = if (it.supportsGpu) {
                         _selectedBackend.value ?: LlmInference.Backend.GPU
                     } else {
@@ -137,15 +179,24 @@ class CreatorViewModel(
         }
         
         _selectedModel.value = model
-        _isModelLoaded.value = false // Require reload if model changed
-        
+        _isModelLoaded.value = false
+        val savedTokens = prefs.getInt("max_tokens_${model.name}", minOf(4096, model.contextWindowSize.coerceAtLeast(1)))
+        _selectedMaxTokens.value = savedTokens.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
+
         _selectedBackend.value = if (model.supportsGpu) {
             _selectedBackend.value ?: LlmInference.Backend.GPU
         } else {
             LlmInference.Backend.CPU
         }
-        
+
         saveSettings()
+    }
+
+    fun setMaxTokens(maxTokens: Int) {
+        val cap = _selectedModel.value?.contextWindowSize?.coerceAtLeast(1) ?: 4096
+        _selectedMaxTokens.value = maxTokens.coerceIn(1, cap)
+        saveSettings()
+        applyGenerationParametersToService()
     }
 
     fun selectBackend(backend: LlmInference.Backend, deviceId: String? = null) {
@@ -157,6 +208,18 @@ class CreatorViewModel(
         _selectedNpuDeviceId.value = deviceId
         _isModelLoaded.value = false
         saveSettings()
+    }
+
+    fun setNGpuLayers(n: Int) {
+        _selectedNGpuLayers.value = n
+        saveSettings()
+        applyGenerationParametersToService()
+    }
+
+    fun setEnableThinking(enabled: Boolean) {
+        _enableThinking.value = enabled
+        saveSettings()
+        applyGenerationParametersToService()
     }
 
     fun loadModel() {
@@ -174,9 +237,8 @@ class CreatorViewModel(
             try {
                 // Unload current if any
                 inferenceService.unloadModel()
-                
-                // Load model 
-                // Using standard settings, enabling generic vision/audio if supported by model, though not strictly used for generation here yet
+                applyGenerationParametersToService()
+
                 val success = inferenceService.loadModel(
                     model = model,
                     preferredBackend = backend,
@@ -200,17 +262,37 @@ class CreatorViewModel(
 
     fun unloadModel() {
         viewModelScope.launch {
-            try {
-                inferenceService.unloadModel()
-                _isModelLoaded.value = false
-            } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to unload model"
+            unloadMutex.withLock {
+                try {
+                    cancelGenerationInternal()
+                    inferenceService.unloadModel()
+                    _isModelLoaded.value = false
+                } catch (e: Exception) {
+                    _error.value = e.message ?: "Failed to unload model"
+                }
+            }
+        }
+    }
+
+    fun stopAndUnloadOnExit() {
+        viewModelScope.launch {
+            unloadMutex.withLock {
+                try {
+                    cancelGenerationInternal()
+                    inferenceService.unloadModel()
+                } catch (e: Exception) {
+                    Log.w("CreatorViewModel", "stopAndUnloadOnExit failed: ${e.message}")
+                } finally {
+                    _isGenerating.value = false
+                    _isModelLoaded.value = false
+                }
             }
         }
     }
 
     fun generateCreator(userPrompt: String) {
-        viewModelScope.launch {
+        generationJob?.cancel()
+        generationJob = viewModelScope.launch {
             _isGenerating.value = true
             _error.value = null
             _generatedCreator.value = null
@@ -247,11 +329,12 @@ class CreatorViewModel(
                     SYSTEM_PROMPT:
                     [System prompt the agent must follow. Include concise, firm instructions on Personality, Context, Task, and Format that would meet the User Description goals. Use markdown for clarity (bolding, lists, etc).]
                     
-                    Do not add any other text or conversational filler. Just the format above.
+                    IMPORTANT: Respond in the same language as the User Description. Do not add any other text or conversational filler. Just the format above.
                 """.trimIndent()
 
                 // Add 3 minute timeout
                 withTimeout(180_000L) {
+                    applyGenerationParametersToService()
                     val response = inferenceService.generateResponse(metaPrompt, model)
                     
                     val parsedCreator = parseResponse(response, userPrompt)
@@ -265,13 +348,26 @@ class CreatorViewModel(
             } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
                 Log.e("CreatorViewModel", "Generation timed out", e)
                 _error.value = "Generation timed out (3 min limit). Please try a simpler prompt or faster model."
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                Log.d("CreatorViewModel", "Generation cancelled")
             } catch (e: Exception) {
                 Log.e("CreatorViewModel", "Generation failed", e)
                 _error.value = "Error: ${e.message}"
             } finally {
                 _isGenerating.value = false
+                generationJob = null
             }
         }
+    }
+
+    private suspend fun cancelGenerationInternal() {
+        val activeJob = generationJob
+        if (activeJob != null) {
+            try {
+                activeJob.cancelAndJoin()
+            } catch (_: Exception) {}
+        }
+        generationJob = null
     }
 
     private fun parseResponse(response: String, originalPrompt: String): CreatorEntity? {
@@ -317,5 +413,12 @@ class CreatorViewModel(
     
     fun clearError() {
         _error.value = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            try { inferenceService.unloadModel() } catch (_: Exception) {}
+        }
     }
 }

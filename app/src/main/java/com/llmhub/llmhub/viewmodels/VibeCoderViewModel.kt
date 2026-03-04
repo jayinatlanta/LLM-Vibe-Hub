@@ -10,6 +10,7 @@ import com.llmhub.llmhub.data.ModelAvailabilityProvider
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,7 +48,12 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     // Optional selected NPU device id when user chooses NPU for GGUF
     private val _selectedNpuDeviceId = MutableStateFlow<String?>(null)
     val selectedNpuDeviceId: StateFlow<String?> = _selectedNpuDeviceId.asStateFlow()
-    
+
+    private val _selectedNGpuLayers = MutableStateFlow<Int?>(null)
+
+    private val _selectedMaxTokens = MutableStateFlow(4096)
+    val selectedMaxTokens: StateFlow<Int> = _selectedMaxTokens.asStateFlow()
+
     // Loading states
     private val _isModelLoaded = MutableStateFlow(false)
     val isModelLoaded: StateFlow<Boolean> = _isModelLoaded.asStateFlow()
@@ -77,37 +83,43 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
     
+    private val _enableThinking = MutableStateFlow(true)
+    val enableThinking: StateFlow<Boolean> = _enableThinking.asStateFlow()
+
+    private var pendingSavedModelName: String? = null
+    
     init {
-        loadAvailableModels()
         loadSavedSettings()
+        loadAvailableModels()
     }
     
     /**
      * Load previously saved settings (model, backend)
      */
     private fun loadSavedSettings() {
-        val savedBackendName = prefs.getString("selected_backend", LlmInference.Backend.GPU.name)
-        _selectedBackend.value = try {
+        pendingSavedModelName = prefs.getString("selected_model_name", null)
+    }
+
+    private fun restoreSettingsForModel(model: LLMModel) {
+        val savedTokens = prefs.getInt("max_tokens_${model.name}", minOf(4096, model.contextWindowSize.coerceAtLeast(1)))
+        _selectedMaxTokens.value = savedTokens.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
+
+        val savedBackendName = prefs.getString("selected_backend_${model.name}", prefs.getString("selected_backend", LlmInference.Backend.GPU.name))
+        val restoredBackend = try {
             LlmInference.Backend.valueOf(savedBackendName ?: LlmInference.Backend.GPU.name)
         } catch (_: IllegalArgumentException) {
             LlmInference.Backend.GPU
         }
-        
-        _selectedNpuDeviceId.value = prefs.getString("selected_npu_device", null)
-        
-        val savedModelName = prefs.getString("selected_model_name", null)
-        if (savedModelName != null) {
-            viewModelScope.launch {
-                kotlinx.coroutines.delay(100)
-                val model = _availableModels.value.find { it.name == savedModelName }
-                if (model != null) {
-                    _selectedModel.value = model
-                    if (!model.supportsGpu && _selectedBackend.value == LlmInference.Backend.GPU) {
-                        _selectedBackend.value = LlmInference.Backend.CPU
-                    }
-                }
-            }
+        _selectedBackend.value = if (model.supportsGpu) restoredBackend else LlmInference.Backend.CPU
+
+        _selectedNpuDeviceId.value = if (_selectedBackend.value == LlmInference.Backend.GPU) {
+            prefs.getString("selected_npu_device_id_${model.name}", prefs.getString("selected_npu_device_id", null))
+        } else {
+            null
         }
+
+        _enableThinking.value = prefs.getBoolean("enable_thinking_${model.name}", prefs.getBoolean("enable_thinking", true))
+        _selectedNGpuLayers.value = prefs.getInt("n_gpu_layers_${model.name}", 999).let { if (it == 999) null else it }
     }
     
     /**
@@ -116,8 +128,16 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     private fun saveSettings() {
         prefs.edit().apply {
             putString("selected_model_name", _selectedModel.value?.name)
+            _selectedModel.value?.let { model ->
+                putString("selected_backend_${model.name}", _selectedBackend.value?.name)
+                putString("selected_npu_device_id_${model.name}", _selectedNpuDeviceId.value)
+                putInt("max_tokens_${model.name}", _selectedMaxTokens.value)
+                putBoolean("enable_thinking_${model.name}", _enableThinking.value)
+                putInt("n_gpu_layers_${model.name}", _selectedNGpuLayers.value ?: 999)
+            }
             putString("selected_backend", _selectedBackend.value?.name)
-            putString("selected_npu_device", _selectedNpuDeviceId.value)
+            putString("selected_npu_device_id", _selectedNpuDeviceId.value)
+            putBoolean("enable_thinking", _enableThinking.value)
             apply()
         }
     }
@@ -132,14 +152,14 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 .filter { it.category != "embedding" && !it.name.contains("Projector", ignoreCase = true) }
             _availableModels.value = available
             if (_selectedModel.value == null) {
-                available.firstOrNull()?.let {
+                val modelToSelect = pendingSavedModelName?.let { savedName ->
+                    available.find { it.name == savedName }
+                } ?: available.firstOrNull()
+                modelToSelect?.let {
                     _selectedModel.value = it
-                    _selectedBackend.value = if (it.supportsGpu) {
-                        _selectedBackend.value ?: LlmInference.Backend.GPU
-                    } else {
-                        LlmInference.Backend.CPU
-                    }
+                    restoreSettingsForModel(it)
                 }
+                pendingSavedModelName = null
             }
         }
     }
@@ -154,16 +174,18 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         
         _selectedModel.value = model
         _isModelLoaded.value = false
-        
-        _selectedBackend.value = if (model.supportsGpu) {
-            _selectedBackend.value ?: LlmInference.Backend.GPU
-        } else {
-            LlmInference.Backend.CPU
-        }
-        
+        restoreSettingsForModel(model)
+
         saveSettings()
     }
-    
+
+    fun setMaxTokens(maxTokens: Int) {
+        val cap = _selectedModel.value?.contextWindowSize?.coerceAtLeast(1) ?: 4096
+        _selectedMaxTokens.value = maxTokens.coerceIn(1, cap)
+        saveSettings()
+        applyGenerationParametersToService()
+    }
+
     /**
      * Select inference backend (GPU, CPU, etc.)
      */
@@ -177,10 +199,46 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         _isModelLoaded.value = false
         saveSettings()
     }
+
+    fun setNGpuLayers(n: Int) {
+        _selectedNGpuLayers.value = n
+        saveSettings()
+        applyGenerationParametersToService()
+    }
     
     /**
      * Load the selected model into memory
      */
+    fun setEnableThinking(enabled: Boolean) {
+        _enableThinking.value = enabled
+        saveSettings()
+        applyGenerationParametersToService()
+    }
+
+    private fun applyGenerationParametersToService(
+        maxTokens: Int? = null,
+        topK: Int? = null,
+        topP: Float? = null,
+        temperature: Float? = null
+    ) {
+        val model = _selectedModel.value
+        val effectiveMaxTokens = when {
+            maxTokens != null && model != null -> maxTokens.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
+            maxTokens != null -> maxTokens
+            model != null -> _selectedMaxTokens.value.coerceIn(1, model.contextWindowSize.coerceAtLeast(1))
+            else -> _selectedMaxTokens.value
+        }
+
+        inferenceService.setGenerationParameters(
+            effectiveMaxTokens,
+            topK,
+            topP,
+            temperature,
+            _selectedNGpuLayers.value,
+            _enableThinking.value
+        )
+    }
+    
     fun loadModel() {
         val model = _selectedModel.value ?: return
         val backend = _selectedBackend.value ?: return
@@ -195,7 +253,8 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             
             try {
                 inferenceService.unloadModel()
-                
+                applyGenerationParametersToService()
+
                 // Load model with text-only mode (vibe coder generates code as text)
                 val success = inferenceService.loadModel(
                     model = model,
@@ -224,6 +283,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
     fun unloadModel() {
         viewModelScope.launch {
             try {
+                cancelGenerationInternal()
                 inferenceService.unloadModel()
                 _isModelLoaded.value = false
                 _generatedCode.value = ""
@@ -291,7 +351,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                     _isPlanning.value = true
                     try {
                         // Adjust parameters for Architect (shorter output needed)
-                        inferenceService.setGenerationParameters(
+                        applyGenerationParametersToService(
                             maxTokens = 1024, // Architect only needs to write a short list
                             topK = 40,
                             topP = 0.95f,
@@ -350,7 +410,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
                 currentSpec = builtSpec
                 
                 // Configure parameters for the Coder phase (needs lots of output space for code)
-                inferenceService.setGenerationParameters(
+                applyGenerationParametersToService(
                     maxTokens = 8192,
                     topK = 40,
                     topP = 0.95f,
@@ -531,9 +591,43 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
      * Cancel ongoing code generation
      */
     fun cancelGeneration() {
-        processingJob?.cancel()
-        processingJob = null
+        viewModelScope.launch {
+            cancelGenerationInternal()
+        }
+    }
+
+    /**
+     * Safe cleanup path when leaving Vibe screen:
+     * stop streaming generation first, then unload model.
+     */
+    fun stopAndUnloadOnExit() {
+        viewModelScope.launch {
+            try {
+                cancelGenerationInternal()
+                inferenceService.unloadModel()
+                _isModelLoaded.value = false
+            } catch (e: Exception) {
+                Log.w("VibeCoderVM", "stopAndUnloadOnExit failed: ${e.message}")
+            }
+        }
+    }
+
+    private suspend fun cancelGenerationInternal() {
+        val activeJob = processingJob
+        if (activeJob != null) {
+            activeJob.cancel()
+            try {
+                activeJob.cancelAndJoin()
+            } catch (_: Exception) {
+            }
+            processingJob = null
+        }
         _isProcessing.value = false
+        _isPlanning.value = false
+        try {
+            inferenceService.setGenerationParameters(null, null, null, null)
+        } catch (_: Exception) {
+        }
     }
     
     /**
@@ -544,7 +638,14 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         _codeLanguage.value = CodeLanguage.UNKNOWN
         currentSpec = ""
     }
-    
+
+    /**
+     * Update generated code (user edits)
+     */
+    fun updateGeneratedCode(code: String) {
+        _generatedCode.value = code
+    }
+
     /**
      * Clear error message
      */
@@ -561,24 +662,25 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
         return """
             You are a helpful Technical Assistant.
             Your goal is to expand the user's request into a clear, concise list of functional requirements.
-            
+
             CONTEXT:
             ${if (isRevision) "The user wants to MODIFY this existing code:\n$currentCode" else "This is a NEW project request."}
-            
+
             USER REQUEST: "$userRequest"
-            
+
             TASK:
             1. Identify the core features needed.
             2. List specific UI elements required (buttons, inputs, displays).
             3. Define the basic logic flow (e.g., "User clicks -> Update Score").
             4. Keep it brief and actionable.
-            
+
             OUTPUT FORMAT:
             - Feature: [Description]
             - UI: [Element]
             - Logic: [Rule]
-            
+
             Output ONLY the list. Do not write code or introductions.
+            IMPORTANT: Respond in the same language as the user's request.
         """.trimIndent()
     }
 
@@ -594,10 +696,10 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             **CRITICAL STACK RULE:** You MUST default to HTML/JS for ALL games and apps. HTML/JS is required because it runs natively in the user's view. Python cannot render UI or playable games in this environment, and should be a LAST RESORT used ONLY for pure math/charting tasks, backend/scripting tasks meant to be copied, or if the user explicitly asks for Python.
 
             Your task is to generate clean, functional code based on the Requirements provided below.
-            
+
             REQUIREMENTS:
             $requirements
-            
+
             Think about how to meet these requirements for the best stand-alone functional code to delight the user.
 
             CONSTRAINTS:
@@ -641,7 +743,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             YOUR PYTHON CODE HERE
             ```
             - Respond ONLY with the production-ready stand-alone code in a markdown code block. DO NOT include explanations, warnings, or additional text before or after the code block.
-    
+            IMPORTANT: All UI text, labels, button text, and messages in the generated code must be in the same language as the user's input.
         """.trimIndent()
     }
 
@@ -678,6 +780,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             - Wrap code in ```html or ```python blocks.
             - Return the FULL modified code, not just a diff.
             - No explanations.
+            IMPORTANT: All UI text, labels, button text, and messages in the generated code must be in the same language as the user's request.
         """.trimIndent()
     }
 
@@ -692,7 +795,7 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
 
             Your task is to generate clean, functional code based on the current user request.
 
-            User request: ${"$"}userPrompt
+            User request: $userPrompt
 
             Think about how to meet the user's request for the best stand-alone functional code to delight the user, considering the constraints and requirements that follow.
 
@@ -736,13 +839,14 @@ class VibeCoderViewModel(application: Application) : AndroidViewModel(applicatio
             YOUR PYTHON CODE HERE
             ```
             - Respond ONLY with the production-ready stand-alone code in a markdown code block. DO NOT include explanations, warnings, or additional text before or after the code block.
-    
+            IMPORTANT: All UI text, labels, button text, and messages in the generated code must be in the same language as the user's input.
         """.trimIndent()
     }
     
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch {
+            try { inferenceService.unloadModel() } catch (_: Exception) {}
             inferenceService.onCleared()
         }
     }

@@ -14,9 +14,11 @@ data class ModelConfig(
     val topP: Float,
     val temperature: Float,
     val backend: String?, // "CPU" or "GPU" or null
-    val deviceId: String?, // e.g. "HTP0" for NPU
+    val deviceId: String?, // e.g. "dev0" for NPU, "gpu" for GPU
     val disableVision: Boolean,
-    val disableAudio: Boolean
+    val disableAudio: Boolean,
+    val nGpuLayers: Int = 999, // layers offloaded to GPU/NPU (GGUF/Nexa SDK only)
+    val enableThinking: Boolean = true // whether thinking/reasoning output is enabled
 ) {
     fun toJson(): JSONObject {
         val obj = JSONObject()
@@ -29,6 +31,8 @@ data class ModelConfig(
         if (deviceId != null) obj.put("deviceId", deviceId) else obj.put("deviceId", JSONObject.NULL)
         obj.put("disableVision", disableVision)
         obj.put("disableAudio", disableAudio)
+        obj.put("nGpuLayers", nGpuLayers)
+        obj.put("enableThinking", enableThinking)
         return obj
     }
 
@@ -42,7 +46,9 @@ data class ModelConfig(
                 backend = if (obj.has("backend") && !obj.isNull("backend")) obj.optString("backend") else null,
                 deviceId = if (obj.has("deviceId") && !obj.isNull("deviceId")) obj.optString("deviceId") else null,
                 disableVision = obj.optBoolean("disableVision", false),
-                disableAudio = obj.optBoolean("disableAudio", false)
+                disableAudio = obj.optBoolean("disableAudio", false),
+                nGpuLayers = obj.optInt("nGpuLayers", 999),
+                enableThinking = obj.optBoolean("enableThinking", true)
             )
         }
     }
