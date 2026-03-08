@@ -110,7 +110,7 @@ class NexaInferenceService @Inject constructor(
      * - Returns Pair(allowed:Boolean, reason:String?) where reason is non-null when denied.
      * - This is defensive: it catches native/SELinux failures and returns a human-friendly reason.
      */
-    suspend fun probeNpuAvailability(deviceId: String = "dev0"): Pair<Boolean, String?> {
+    suspend fun probeNpuAvailability(deviceId: String = "HTP0"): Pair<Boolean, String?> {
         if (!nexaAvailable) {
             Log.w(TAG, "NPU probe: Nexa SDK unavailable")
             return Pair(false, "Nexa SDK unavailable on device")
@@ -285,15 +285,29 @@ class NexaInferenceService @Inject constructor(
                     Log.w(TAG, "Capped nCtx from $rawCtx to $nCtx to prevent OOM (Device RAM ~${String.format("%.1f", totalRamGb)}GB)")
                 }
                 // Determine device/plugin to use. If caller provided an explicit deviceId (e.g. "HTP0") prefer it
-                val userRequestedNpu = !deviceId.isNullOrBlank() && deviceId.startsWith("dev", ignoreCase = true)
+                val userRequestedNpu = !deviceId.isNullOrBlank() && (
+                    deviceId.startsWith("dev", ignoreCase = true) ||
+                    deviceId.startsWith("htp", ignoreCase = true)
+                )
                 var isNpuRequested = userRequestedNpu
 
                 // If a dev (NPU/Hexagon) device is requested (either explicitly by user or by auto-selection),
                 // run a lightweight probe. Behavior differs based on intent:
                 // - explicit user request: fail fast (return false) if probe denies — do NOT fall back
                 // - automatic request: fall back to gpu on probe denial
+                val deviceToUse = when {
+                    backendId == "CPU" -> "cpu"
+                    isNpuRequested -> when {
+                        deviceId.isNullOrBlank() -> "HTP0"
+                        deviceId.startsWith("dev", ignoreCase = true) ->
+                            "HTP${deviceId.replaceFirst(Regex("(?i)^dev"), "")}"
+                        else -> deviceId
+                    }
+                    else -> "GPUOpenCL"
+                }
+
                 if (isNpuRequested) {
-                    val (allowed, reason) = probeNpuAvailability(deviceId ?: "dev0")
+                    val (allowed, reason) = probeNpuAvailability(deviceToUse)
                     if (!allowed) {
                         if (userRequestedNpu) {
                             // User explicitly asked for NPU — do not silently fall back. Return failure
@@ -307,15 +321,10 @@ class NexaInferenceService @Inject constructor(
                         Log.i(TAG, "NPU probe allowed for deviceId=$deviceId — proceeding with Hexagon")
                     }
                 }
-
-                val deviceToUse = when {
-                    backendId == "CPU" -> "cpu"
-                    isNpuRequested -> deviceId // explicit Hexagon device like dev0
-                    else -> "gpu"
-                }
+                val pluginToUse = "cpu_gpu"
 
                 // nGpuLayers > 0 is required to enable offloading to GPU/Hexagon (GGUF cpu_gpu path).
-                // Nexa docs: device_id="gpu" for GPU, "dev0" for NPU/Hexagon.
+                // Nexa docs: device_id="GPUOpenCL" for GPU, "HTP0" for NPU/Hexagon, "cpu" for CPU.
                 // When the user has set a custom layer count via the slider, honour it; otherwise default 999.
                 val gpuLayers = when {
                     backendId == "CPU" -> 0
@@ -336,6 +345,10 @@ class NexaInferenceService @Inject constructor(
                     nGpuLayers = gpuLayers,
                     enable_thinking = isThinkingModelForConfig
                 )
+                Log.i(
+                    TAG,
+                    "Nexa create config: backend=$backendId plugin=$pluginToUse device=$deviceToUse requestedNGpuLayers=${overrideNGpuLayers ?: 999} appliedNGpuLayers=${modelConfig.nGpuLayers}"
+                )
 
                 // Find mmproj path for VLM models (only when vision is enabled)
                 val mmprojPath = if (model.supportsVision && !disableVision) {
@@ -350,7 +363,7 @@ class NexaInferenceService @Inject constructor(
                         model_path = modelFile.absolutePath,
                         mmproj_path = mmprojPath,
                         config = modelConfig,
-                        plugin_id = "cpu_gpu",
+                        plugin_id = pluginToUse,
                         device_id = deviceToUse
                     )
 
@@ -366,7 +379,14 @@ class NexaInferenceService @Inject constructor(
                         currentModel = model
                         currentPreferredBackend = if (backendId == "CPU") LlmInference.Backend.CPU else LlmInference.Backend.GPU
                         currentVisionDisabled = disableVision
-                        val resolvedBackend = if (!deviceToUse.isNullOrBlank() && deviceToUse.startsWith("dev", ignoreCase = true)) {
+                        Log.i(
+                            TAG,
+                            "Nexa applied config (VLM): backend=$backendId plugin=$pluginToUse device=$deviceToUse appliedNGpuLayers=${modelConfig.nGpuLayers}"
+                        )
+                        val resolvedBackend = if (!deviceToUse.isNullOrBlank() && (
+                            deviceToUse.startsWith("dev", ignoreCase = true) ||
+                            deviceToUse.startsWith("htp", ignoreCase = true)
+                        )) {
                             "NPU($deviceToUse)"
                         } else {
                             backendId
@@ -383,7 +403,7 @@ class NexaInferenceService @Inject constructor(
                         model_path = modelFile.absolutePath,
                         tokenizer_path = null,
                         config = modelConfig,
-                        plugin_id = "cpu_gpu",
+                        plugin_id = pluginToUse,
                         device_id = deviceToUse
                     )
 
@@ -401,7 +421,14 @@ class NexaInferenceService @Inject constructor(
                         currentModel = model
                         currentPreferredBackend = if (backendId == "CPU") LlmInference.Backend.CPU else LlmInference.Backend.GPU
                         currentVisionDisabled = disableVision
-                        val resolvedBackend = if (!deviceToUse.isNullOrBlank() && deviceToUse.startsWith("dev", ignoreCase = true)) {
+                        Log.i(
+                            TAG,
+                            "Nexa applied config (LLM): backend=$backendId plugin=$pluginToUse device=$deviceToUse appliedNGpuLayers=${modelConfig.nGpuLayers}"
+                        )
+                        val resolvedBackend = if (!deviceToUse.isNullOrBlank() && (
+                            deviceToUse.startsWith("dev", ignoreCase = true) ||
+                            deviceToUse.startsWith("htp", ignoreCase = true)
+                        )) {
                             "NPU($deviceToUse)"
                         } else {
                             backendId
@@ -920,14 +947,30 @@ class NexaInferenceService @Inject constructor(
             }
             is LlmStreamResult.Completed -> close()
             is LlmStreamResult.Error -> {
-                // Log detailed error information for debugging
-                try {
-                    val errorCode = streamResult::class.java.getDeclaredField("errorCode").apply { isAccessible = true }.get(streamResult)
-                    Log.e(TAG, "VLM/LLM SDK Error - Code: $errorCode")
-                } catch (e: Exception) {
-                    Log.e(TAG, "VLM/LLM SDK Error (unable to extract error code)")
-                }
-                close(Exception("SDK Error"))
+                // Log detailed SDK error fields (field names vary by Nexa SDK builds)
+                val cls = streamResult::class.java
+                val code = runCatching {
+                    cls.declaredFields.firstOrNull {
+                        it.name.equals("errorCode", true) ||
+                            it.name.equals("code", true) ||
+                            it.name.equals("errCode", true)
+                    }?.let {
+                        it.isAccessible = true
+                        it.get(streamResult)?.toString()
+                    }
+                }.getOrNull()
+                val message = runCatching {
+                    cls.declaredFields.firstOrNull {
+                        it.name.equals("message", true) ||
+                            it.name.equals("errorMessage", true) ||
+                            it.name.equals("msg", true)
+                    }?.let {
+                        it.isAccessible = true
+                        it.get(streamResult)?.toString()
+                    }
+                }.getOrNull()
+                Log.e(TAG, "VLM/LLM SDK Error - code=${code ?: "unknown"} message=${message ?: "unknown"} class=${cls.simpleName}")
+                close(Exception("SDK Error code=${code ?: "unknown"} message=${message ?: "unknown"}"))
             }
         }
     }
@@ -1186,9 +1229,9 @@ class NexaInferenceService @Inject constructor(
         // instead of the actual result. We detect common separators and split so that
         // the instructions go into the system role and the user input goes into the user role.
         if (messages.isEmpty()) {
-            // Vibe Coder style prompts often contain a large instruction block plus a
-            // dedicated USER REQUEST field. Split those into system+user roles so
-            // Harmony models execute the request instead of echoing meta-instructions.
+            // VibeCoder and other feature prompts often contain a large instruction block plus a
+            // dedicated USER REQUEST field. Split those into system+user roles so the model
+            // executes the request instead of echoing meta-instructions.
             val quotedReqRegex = Regex("""(?is)\bUSER REQUEST\s*:\s*\"([\s\S]*?)\"""")
             val plainReqRegex = Regex("""(?im)^\s*User request\s*:\s*(.+)$""")
             val quotedReqMatch = quotedReqRegex.find(cleanPrompt)
