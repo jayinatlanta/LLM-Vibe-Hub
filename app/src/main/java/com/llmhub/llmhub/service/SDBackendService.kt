@@ -191,12 +191,12 @@ class SDBackendService : Service() {
             val modelType = detectModelType(modelDir)
             Log.i(TAG, "Starting $modelType backend")
             
-            // Get native library directory
+            // Get native library directory (needed for environment variables and working directory)
             val nativeDir = applicationInfo.nativeLibraryDir
             val executable = File(nativeDir, EXECUTABLE_NAME)
             
             if (!executable.exists()) {
-                Log.e(TAG, "Executable not found: ${executable.absolutePath}")
+                Log.e(TAG, "Executable not found in native library directory: ${executable.absolutePath}")
                 return false
             }
             

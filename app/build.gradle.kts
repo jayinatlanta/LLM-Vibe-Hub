@@ -1,7 +1,17 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
+}
+
 import java.util.Properties
 import java.io.FileInputStream
 import java.util.zip.ZipFile
 import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import java.io.FileOutputStream
+import java.io.File
 
 // Load local.properties at the top-level so it's available everywhere
 val localProperties = Properties()
@@ -10,11 +20,12 @@ if (localPropertiesFile.exists()) {
     localProperties.load(FileInputStream(localPropertiesFile))
 }
 
-plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
+// Create a variable called keystorePropertiesFile, and initialize it to your
+// keystore.properties file, in the rootProject folder.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -104,9 +115,6 @@ android {
             excludes += "google/protobuf/*.proto"
         }
         // Configure JNI libraries packaging
-        // useLegacyPackaging = true is REQUIRED because SDBackendService uses ProcessBuilder
-        // to execute libstable_diffusion_core.so as a standalone process, which needs the
-        // library extracted to disk (not compressed in APK)
         jniLibs {
             useLegacyPackaging = true
             // Note: strip native debug symbols via release.ndk.debugSymbolLevel = "NONE"
@@ -251,9 +259,8 @@ dependencies {
     // Nexa bundles libonnxruntime.so directly in its AAR (6.5MB) which conflicts with
     // Microsoft's ORT JNI bridge. The task below strips it from the cached AAR so only
     // Microsoft's version ends up in the APK.
-    implementation("ai.nexa:core:0.0.24") {
-        exclude(group = "com.microsoft.onnxruntime")
-    }
+    // Instead of using implementation directly, we use the stripped AAR produced by our task
+    implementation(files("${layout.buildDirectory.get().asFile}/outputs/aar/nexa-core-stripped.aar"))
 
     // Play Core for asset pack access at runtime
     implementation("com.google.android.play:asset-delivery:2.2.2")
@@ -266,6 +273,102 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// ── Strip Conflicting libonnxruntime.so from Nexa AAR ────────────────────────
+// Nexa SDK bundles an old version of libonnxruntime.so inside its AAR which conflicts
+// with Microsoft's official onnxruntime-android dependency. We must strip it out
+// to prevent UnsatisfiedLinkError during ONNX initialization.
+val stripNexaOnnxRuntime by tasks.registering {
+    description = "Strips the conflicting libonnxruntime.so from the Nexa AAR"
+    group = "build setup"
+    
+    val nexaVersion = "0.0.24"
+    val nexaDep = "ai.nexa:core:$nexaVersion@aar"
+    
+    // Create a detached configuration to download the AAR
+    val nexaAarConfig = configurations.detachedConfiguration(dependencies.create(nexaDep))
+    
+    inputs.files(nexaAarConfig)
+    
+    val outDir = layout.buildDirectory.dir("outputs/aar").get().asFile
+    val outFile = File(outDir, "nexa-core-stripped.aar")
+    outputs.file(outFile)
+    
+    doLast {
+        outDir.mkdirs()
+        val inAar = nexaAarConfig.singleFile
+        
+        // Use a temporary file for the repackaged AAR
+        val tmpAar = File(outDir, "nexa-core-stripped.aar.tmp")
+        if (tmpAar.exists()) tmpAar.delete()
+        
+        logger.lifecycle("Stripping libonnxruntime.so from ${inAar.name}...")
+        val fileClass = Class.forName("java.io.File")
+        
+        val zipFileClass = Class.forName("java.util.zip.ZipFile")
+        val zipIn = zipFileClass.getConstructor(fileClass).newInstance(inAar)
+        val mEntries = zipFileClass.getMethod("entries")
+        val mGetInputStream = zipFileClass.getMethod("getInputStream", Class.forName("java.util.zip.ZipEntry"))
+        val mCloseZipIn = zipFileClass.getMethod("close")
+        
+        val fosClass = Class.forName("java.io.FileOutputStream")
+        val fos = fosClass.getConstructor(fileClass).newInstance(tmpAar)
+        val mCloseFos = fosClass.getMethod("close")
+        
+        val zipOutClass = Class.forName("java.util.zip.ZipOutputStream")
+        val zipOut = zipOutClass.getConstructor(Class.forName("java.io.OutputStream")).newInstance(fos)
+        val mPutNextEntry = zipOutClass.getMethod("putNextEntry", Class.forName("java.util.zip.ZipEntry"))
+        val mWrite = zipOutClass.getMethod("write", ByteArray::class.java, Int::class.java, Int::class.java)
+        val mCloseEntry = zipOutClass.getMethod("closeEntry")
+        val mCloseZipOut = zipOutClass.getMethod("close")
+        
+        val zipEntryClass = Class.forName("java.util.zip.ZipEntry")
+        val mGetName = zipEntryClass.getMethod("getName")
+        
+        val inStreamClass = Class.forName("java.io.InputStream")
+        val mRead = inStreamClass.getMethod("read", ByteArray::class.java)
+        val mCloseInStream = inStreamClass.getMethod("close")
+
+        try {
+            val entries = mEntries.invoke(zipIn) as java.util.Enumeration<*>
+            var strippedCount = 0
+            
+            for (entryObj in entries.asSequence()) {
+                val entryName = mGetName.invoke(entryObj) as String
+                
+                // Skip any libonnxruntime.so files bundled inside the AAR
+                if (entryName.contains("libonnxruntime.so")) {
+                    logger.lifecycle("  -> Stripped: $entryName")
+                    strippedCount++
+                    continue
+                }
+                
+                // Copy all other files over
+                val newEntry = zipEntryClass.getConstructor(String::class.java).newInstance(entryName)
+                mPutNextEntry.invoke(zipOut, newEntry)
+                
+                val inStream = mGetInputStream.invoke(zipIn, entryObj)
+                val buffer = ByteArray(8192)
+                var read = mRead.invoke(inStream, buffer) as Int
+                while (read >= 0) {
+                    mWrite.invoke(zipOut, buffer, 0, read)
+                    read = mRead.invoke(inStream, buffer) as Int
+                }
+                mCloseInStream.invoke(inStream)
+                mCloseEntry.invoke(zipOut)
+            }
+            logger.lifecycle("Total conflicting libraries stripped: $strippedCount")
+        } finally {
+            mCloseZipIn.invoke(zipIn)
+            mCloseZipOut.invoke(zipOut)
+            mCloseFos.invoke(fos)
+        }
+        
+        // Move temp file to final destination
+        tmpAar.renameTo(outFile)
+        logger.lifecycle("Created stripped AAR at: ${outFile.absolutePath}")
+    }
 }
 
 // ── Extract npu HTP assets from Nexa AAR into nexa_npu_pack ──────────────────
@@ -309,14 +412,23 @@ val extractNexaNpuAssets by tasks.registering {
                     val rel = entry.name.removePrefix("assets/npu/")
                     val target = npuPackAssetsDir.resolve(rel)
                     target.parentFile.mkdirs()
-                    zip.getInputStream(entry).use { src ->
-                        target.outputStream().use { dst -> src.copyTo(dst) }
-                    }
+                    
+                    val srcStream = zip.getInputStream(entry)
+                    val dstStream = target.outputStream()
+                    srcStream.copyTo(dstStream)
+                    srcStream.close()
+                    dstStream.close()
+                    
                     extracted++
                 }
         }
         logger.lifecycle("extractNexaNpu: extracted $extracted files → ${npuPackAssetsDir.absolutePath}")
     }
+}
+
+// Ensure the AAR stripping task runs before any assembly tasks
+tasks.named("preBuild").configure {
+    dependsOn("stripNexaOnnxRuntime")
 }
 
 // Detect at configuration time whether this is an AAB bundle build or an APK build.
