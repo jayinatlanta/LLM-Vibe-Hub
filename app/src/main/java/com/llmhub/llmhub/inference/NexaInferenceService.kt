@@ -309,7 +309,7 @@ class NexaInferenceService @Inject constructor(
                 }
 
                 val deviceToUse = when {
-                    backendId == "CPU" -> null
+                    backendId == "CPU" -> "cpu"
                     isNpuRequested -> deviceId // explicit Hexagon device like dev0
                     else -> "gpu"
                 }
