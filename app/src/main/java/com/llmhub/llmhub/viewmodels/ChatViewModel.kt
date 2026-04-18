@@ -1632,6 +1632,19 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
                                     val streamDurationMs = ((if (lastChunkAt > 0) lastChunkAt else System.currentTimeMillis()) - (if (firstChunkAt > 0) firstChunkAt else generationStartTime)).coerceAtLeast(1L)
                                     Log.d("ChatViewModel", "About to call finalizeMessage for success (raw=${time}ms, rag=${ragSearchTimeMs}ms, net=${netTime}ms, stream=${streamDurationMs}ms)")
                                     finalizeMessage(placeholderId, safeFinal, streamDurationMs)
+                                    
+                                    try {
+                                        val prefs = com.llmhub.llmhub.data.ThemePreferences(context)
+                                        if (prefs.notificationsEnabled.first()) {
+                                            com.llmhub.llmhub.utils.NotificationHelper.showGenerationCompleteNotification(
+                                                context,
+                                                "Requested notification... (mAIcro[${System.currentTimeMillis()}])",
+                                                safeFinal.trimEnd()
+                                            )
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w("ChatViewModel", "Error posting notification: ${e.message}")
+                                    }
                                 }
 
                     } catch (e: Exception) {
@@ -1705,6 +1718,19 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
                                 Log.d("ChatViewModel", "About to call finalizeMessage (NonCancellable)")
                                 val streamDurationMs = ((if (lastChunkAt > 0) lastChunkAt else System.currentTimeMillis()) - (if (firstChunkAt > 0) firstChunkAt else generationStartTime)).coerceAtLeast(1L)
                                 finalizeMessage(placeholderId, safeFinal, streamDurationMs)
+                                
+                                try {
+                                    val prefs = com.llmhub.llmhub.data.ThemePreferences(context)
+                                    if (prefs.notificationsEnabled.first()) {
+                                        com.llmhub.llmhub.utils.NotificationHelper.showGenerationCompleteNotification(
+                                            context,
+                                            "Requested notification... (mAIcro[${System.currentTimeMillis()}])",
+                                            safeFinal.trimEnd()
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    Log.w("ChatViewModel", "Error posting notification: ${e.message}")
+                                }
                             }
                         }
                     } finally {
@@ -1899,6 +1925,19 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
                 val streamDurationMs = ((if (lastChunkAt > 0) lastChunkAt else System.currentTimeMillis()) - (if (firstChunkAt > 0) firstChunkAt else System.currentTimeMillis())).coerceAtLeast(1L)
                 finalizeMessage(placeholderId, totalContent, streamDurationMs)
 
+                try {
+                    val prefs = com.llmhub.llmhub.data.ThemePreferences(context)
+                    if (prefs.notificationsEnabled.first()) {
+                        com.llmhub.llmhub.utils.NotificationHelper.showGenerationCompleteNotification(
+                            context,
+                            "Requested notification... (mAIcro[${System.currentTimeMillis()}])",
+                            totalContent.trimEnd()
+                        )
+                    }
+                } catch (e: Exception) {
+                    Log.w("ChatViewModel", "Error posting notification: ${e.message}")
+                }
+
             } catch (e: Exception) {
                 Log.d("ChatViewModel", "Auto-regenerate exception: ${e.javaClass.simpleName}: ${e.message}")
                 
@@ -1907,6 +1946,19 @@ inferenceService.loadModel(currentModel!!, _selectedBackend.value, _selectedNpuD
                     repository.updateMessageContent(placeholderId, totalContent.trimEnd())
                     val streamDurationMs = ((if (lastChunkAt > 0) lastChunkAt else System.currentTimeMillis()) - (if (firstChunkAt > 0) firstChunkAt else System.currentTimeMillis())).coerceAtLeast(1L)
                     finalizeMessage(placeholderId, totalContent, streamDurationMs)
+                    
+                    try {
+                        val prefs = com.llmhub.llmhub.data.ThemePreferences(context)
+                        if (prefs.notificationsEnabled.first()) {
+                            com.llmhub.llmhub.utils.NotificationHelper.showGenerationCompleteNotification(
+                                context,
+                                "Requested notification... (mAIcro[${System.currentTimeMillis()}])",
+                                totalContent.trimEnd()
+                            )
+                        }
+                    } catch (e: Exception) {
+                        Log.w("ChatViewModel", "Error posting notification: ${e.message}")
+                    }
                 }
             } finally {
                 _isLoading.value = false

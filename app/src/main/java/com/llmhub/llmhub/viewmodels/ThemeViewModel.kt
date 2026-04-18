@@ -35,6 +35,9 @@ class ThemeViewModel(private val context: Context) : ViewModel() {
 
     private val _autoReadoutEnabled = MutableStateFlow(false)
     val autoReadoutEnabled: StateFlow<Boolean> = _autoReadoutEnabled.asStateFlow()
+
+    private val _notificationsEnabled = MutableStateFlow(false)
+    val notificationsEnabled: StateFlow<Boolean> = _notificationsEnabled.asStateFlow()
     
     init {
         // Load the saved theme preference
@@ -85,6 +88,13 @@ class ThemeViewModel(private val context: Context) : ViewModel() {
                 _autoReadoutEnabled.value = enabled
             }
         }
+
+        // Load the saved notifications preference
+        viewModelScope.launch {
+            themePreferences.notificationsEnabled.collect { enabled ->
+                _notificationsEnabled.value = enabled
+            }
+        }
     }
     
     fun setThemeMode(mode: ThemeMode) {
@@ -127,6 +137,13 @@ class ThemeViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             themePreferences.setAutoReadoutEnabled(enabled)
             _autoReadoutEnabled.value = enabled
+        }
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            themePreferences.setNotificationsEnabled(enabled)
+            _notificationsEnabled.value = enabled
         }
     }
     

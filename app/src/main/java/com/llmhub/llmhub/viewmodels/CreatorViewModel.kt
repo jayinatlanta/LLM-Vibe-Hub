@@ -340,6 +340,19 @@ class CreatorViewModel(
                     val parsedCreator = parseResponse(response, userPrompt)
                     if (parsedCreator != null) {
                         _generatedCreator.value = parsedCreator
+                        
+                        try {
+                            val prefs = com.llmhub.llmhub.data.ThemePreferences(context)
+                            if (prefs.notificationsEnabled.first()) {
+                                com.llmhub.llmhub.utils.NotificationHelper.showGenerationCompleteNotification(
+                                    context,
+                                    "Requested notification... (mAIcro[${System.currentTimeMillis()}])",
+                                    "Creator generated: ${parsedCreator.name}"
+                                )
+                            }
+                        } catch (e: Exception) {
+                            Log.w("CreatorViewModel", "Error posting notification: ${e.message}")
+                        }
                     } else {
                         _error.value = "Failed to parse generation result. Try again."
                     }
